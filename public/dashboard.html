@@ -4184,6 +4184,8 @@
       const KEY_HIST = `nfseHistorico:${(currentUser.email || "anon").toString().toLowerCase()}`;
       const KEY_DOWNLOADS = `nfseDownloads:${(currentUser.email || "anon").toString().toLowerCase()}`;
       let historicoApiCache = [];
+      let userStateHydrated = false;
+      let stateSyncTimer = null;
 
       function loadList(key) {
         try {
@@ -4198,6 +4200,73 @@
         try {
           localStorage.setItem(key, JSON.stringify(arr || []));
         } catch (e) {}
+        scheduleUserStateSync();
+      }
+
+      function scheduleUserStateSync() {
+        if (!userStateHydrated) return;
+        if (stateSyncTimer) clearTimeout(stateSyncTimer);
+        stateSyncTimer = setTimeout(() => {
+          syncUserStateToServer().catch(() => {});
+        }, 300);
+      }
+
+      async function syncUserStateToServer() {
+        const payload = {
+          fila: loadList(KEY_FILA),
+          downloads: loadList(KEY_DOWNLOADS),
+          historicoLocal: loadList(KEY_HIST),
+        };
+        await fetch("/api/state", {
+          method: "PUT",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload),
+        });
+      }
+
+      async function hydrateUserStateFromServer() {
+        const res = await fetch("/api/state", { credentials: "include" });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j?.ok || !j?.state) return;
+        try {
+          localStorage.setItem(KEY_FILA, JSON.stringify(Array.isArray(j.state.fila) ? j.state.fila : []));
+          localStorage.setItem(KEY_DOWNLOADS, JSON.stringify(Array.isArray(j.state.downloads) ? j.state.downloads : []));
+          localStorage.setItem(KEY_HIST, JSON.stringify(Array.isArray(j.state.historicoLocal) ? j.state.historicoLocal : []));
+        } catch (_) {}
+      }
+
+      function fixText(v) {
+        const s = String(v ?? "");
+        if (!s) return "";
+        const map = [
+          ["Ã§", "ç"],
+          ["Ã£", "ã"],
+          ["Ã¡", "á"],
+          ["Ã©", "é"],
+          ["Ãª", "ê"],
+          ["Ã­", "í"],
+          ["Ã³", "ó"],
+          ["Ãº", "ú"],
+          ["Ã‰", "É"],
+          ["Ã‡", "Ç"],
+          ["Ãƒ", "Ã"],
+          ["â€“", "–"],
+          ["â€”", "—"],
+          ["âœ…", "✅"],
+          ["âš ï¸", "⚠️"],
+          ["atÃ©", "até"],
+          ["perÃ­odo", "período"],
+          ["SimulaÃ§Ã£o", "Simulação"],
+          ["execuÃ§Ã£o", "execução"],
+          ["robÃ´", "robô"],
+          ["nÃ£o", "não"],
+          ["usuÃ¡rio", "usuário"],
+          ["invÃ¡lido", "inválido"],
+        ];
+        let out = s;
+        for (const [a, b] of map) out = out.split(a).join(b);
+        return out;
       }
 
       function normalizeHistoricoLevel(status = "") {
@@ -4405,7 +4474,7 @@
                 <button type="button" class="w-full text-left glass-strong rounded-xl2 p-3 hover:brightness-110 transition" data-jump="view-fila">
                   <div class="flex items-center justify-between gap-3">
                     <div>
-                      <p class="text-sm font-semibold">${label || "-"}</p>
+                      <p class="text-sm font-semibold">${fixText(label || "-")}</p>
                       <p class="text-xs text-white/45 mt-1">${formatDashDate(j.createdAt)}</p>
                     </div>
                     <span class="px-2.5 py-1 rounded-full text-xs font-semibold" style="${statusStyle}">${statusLabel}</span>
@@ -4435,7 +4504,7 @@
                   <div class="flex items-center justify-between gap-3">
                     <div class="flex items-center gap-3">
                       <span class="px-3 py-1 rounded-full text-xs font-semibold" style="${levelStyle}">${level}</span>
-                      <p class="text-sm text-white/85 truncate">${x.message || "-"}</p>
+                      <p class="text-sm text-white/85 truncate">${fixText(x.message || "-")}</p>
                     </div>
                     <span class="text-xs text-white/45 whitespace-nowrap">${formatDashDate(x.createdAt)}</span>
                   </div>
@@ -5047,8 +5116,8 @@
                   <div class="hist-main flex items-start gap-3 min-w-0">
                     <span class="px-3 py-1 rounded-full text-xs font-semibold" style="${levelStyle}">${level}</span>
                     <div class="min-w-0">
-                      <p class="text-sm font-semibold break-words">${x.message || "-"}</p>
-                      <p class="text-xs text-white/35 mt-2">${x.tipo || ""}</p>
+                      <p class="text-sm font-semibold break-words">${fixText(x.message || "-")}</p>
+                      <p class="text-xs text-white/35 mt-2">${fixText(x.tipo || "")}</p>
                       ${
                         hasLogs
                           ? `<div class="hist-actions mt-3 flex items-center gap-2">
@@ -5056,7 +5125,7 @@
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="copy" data-log-id="${x.id}">Copiar logs</button>
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="delete" data-log-id="${x.id}" style="border-color: rgba(239,68,68,.25); color: rgba(239,68,68,.95);">Excluir</button>
                             </div>
-                            <pre id="log-full-${x.id}" class="hidden mt-3 p-3 rounded-xl2 text-xs whitespace-pre-wrap bg-black/25 border border-white/10 max-h-[220px] overflow-auto">${logsText}</pre>`
+                            <pre id="log-full-${x.id}" class="hidden mt-3 p-3 rounded-xl2 text-xs whitespace-pre-wrap bg-black/25 border border-white/10 max-h-[220px] overflow-auto">${fixText(logsText)}</pre>`
                           : `<div class="hist-actions mt-3 flex items-center gap-2">
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="delete" data-log-id="${x.id}" style="border-color: rgba(239,68,68,.25); color: rgba(239,68,68,.95);">Excluir</button>
                             </div>`
@@ -5160,6 +5229,11 @@
           const arr = raw ? JSON.parse(raw) : [];
           if (Array.isArray(arr)) saveEmpresas(arr);
         } catch (_) {}
+
+        try {
+          await hydrateUserStateFromServer();
+        } catch (_) {}
+        userStateHydrated = true;
 
         renderEmpresas();
         renderLoteEmpresas();

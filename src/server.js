@@ -106,6 +106,34 @@ if (!fs.existsSync(ZIP_DIR)) {
   fs.mkdirSync(ZIP_DIR, { recursive: true });
 }
 
+const USER_STATE_FILE = path.join(__dirname, "..", "data", "user_state.json");
+function readUserStateDb() {
+  try {
+    const dir = path.dirname(USER_STATE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(USER_STATE_FILE)) {
+      fs.writeFileSync(USER_STATE_FILE, JSON.stringify({ users: {} }, null, 2));
+    }
+    const raw = fs.readFileSync(USER_STATE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return { users: {} };
+    if (!parsed.users || typeof parsed.users !== "object") parsed.users = {};
+    return parsed;
+  } catch (e) {
+    console.error("[STATE] Falha ao ler user_state.json:", e);
+    return { users: {} };
+  }
+}
+function writeUserStateDb(data) {
+  try {
+    const dir = path.dirname(USER_STATE_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(USER_STATE_FILE, JSON.stringify(data || { users: {} }, null, 2));
+  } catch (e) {
+    console.error("[STATE] Falha ao gravar user_state.json:", e);
+  }
+}
+
 // ---------------------------
 // ✅ Empresas (multi-tenant via userEmail)
 // ---------------------------
@@ -212,6 +240,38 @@ app.delete("/api/empresas/:id", (req, res) => {
   }
 
   return res.json({ ok: true });
+});
+
+app.get("/api/state", (req, res) => {
+  const userEmail = String(req.userEmail || "").trim().toLowerCase();
+  if (!userEmail) return res.status(401).json({ ok: false, error: "Não autenticado." });
+  const dbState = readUserStateDb();
+  const userState = dbState.users[userEmail] || {};
+  return res.json({
+    ok: true,
+    state: {
+      fila: Array.isArray(userState.fila) ? userState.fila : [],
+      downloads: Array.isArray(userState.downloads) ? userState.downloads : [],
+      historicoLocal: Array.isArray(userState.historicoLocal) ? userState.historicoLocal : [],
+      updatedAt: userState.updatedAt || null,
+    },
+  });
+});
+
+app.put("/api/state", (req, res) => {
+  const userEmail = String(req.userEmail || "").trim().toLowerCase();
+  if (!userEmail) return res.status(401).json({ ok: false, error: "Não autenticado." });
+  const body = req.body || {};
+  const nextState = {
+    fila: Array.isArray(body.fila) ? body.fila : [],
+    downloads: Array.isArray(body.downloads) ? body.downloads : [],
+    historicoLocal: Array.isArray(body.historicoLocal) ? body.historicoLocal : [],
+    updatedAt: new Date().toISOString(),
+  };
+  const dbState = readUserStateDb();
+  dbState.users[userEmail] = nextState;
+  writeUserStateDb(dbState);
+  return res.json({ ok: true, state: nextState });
 });
 
 // ---------------------------
