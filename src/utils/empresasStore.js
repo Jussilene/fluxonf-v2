@@ -59,6 +59,37 @@ function writeDb(data) {
   }
 }
 
+function normalizeEmpresaPayload(input = {}, base = {}) {
+  const cnpjRaw = (input.cnpj ?? base.cnpj ?? "").toString();
+  const cleanCnpj = cnpjRaw.replace(/\D/g, "");
+  const authType = (input.authType ?? base.authType ?? "Login e Senha").toString();
+  const loginPortal = (input.loginPortal ?? input.portalLogin ?? base.loginPortal ?? base.portalLogin ?? cleanCnpj).toString().trim();
+  const senhaPortal = (input.senhaPortal ?? input.portalSenha ?? base.senhaPortal ?? base.portalSenha ?? "").toString();
+
+  return {
+    nome: (input.nome ?? base.nome ?? "").toString().trim(),
+    cnpj: cleanCnpj,
+    loginPortal,
+    senhaPortal,
+    municipio: (input.municipio ?? base.municipio ?? "").toString().trim(),
+    userEmail: (input.userEmail ?? base.userEmail ?? "").toString().trim(),
+    authType,
+    portalLogin: loginPortal,
+    portalSenha: senhaPortal,
+    razaoSocial: (input.razaoSocial ?? base.razaoSocial ?? "").toString().trim(),
+    inscricaoEstadual: (input.inscricaoEstadual ?? base.inscricaoEstadual ?? "").toString().trim(),
+    uf: (input.uf ?? base.uf ?? "").toString().trim(),
+    cidade: (input.cidade ?? base.cidade ?? "").toString().trim(),
+    endereco: (input.endereco ?? base.endereco ?? "").toString().trim(),
+    telefone: (input.telefone ?? base.telefone ?? "").toString().trim(),
+    email: (input.email ?? base.email ?? "").toString().trim(),
+    status: (input.status ?? base.status ?? "ATIVO").toString().trim().toUpperCase(),
+    ativa: input.ativa ?? base.ativa ?? true,
+    certPfxPath: (input.certPfxPath ?? input.pfxPath ?? input.certFile ?? base.certPfxPath ?? base.pfxPath ?? base.certFile ?? "").toString().trim(),
+    certPassphrase: (input.certPassphrase ?? input.passphrase ?? input.certPass ?? base.certPassphrase ?? base.passphrase ?? base.certPass ?? "").toString(),
+  };
+}
+
 // ✅ Agora aceita userEmail opcional.
 // - Se vier userEmail: lista só daquele usuário
 // - Se não vier: comportamento antigo (lista tudo)
@@ -78,23 +109,19 @@ export function readEmpresas(userEmail = "") {
 
 // ✅ Agora aceita userEmail opcional.
 // - Se vier userEmail: grava empresa “pertencendo” ao usuário
-export function adicionarEmpresa({ nome, cnpj, loginPortal, senhaPortal, municipio, userEmail }) {
+export function adicionarEmpresa(payload = {}) {
   const db = readDb();
-
-  const cleanCnpj = (cnpj || "").toString().replace(/\D/g, "");
   const now = new Date().toISOString();
+  const normalized = normalizeEmpresaPayload(payload);
 
   const novaEmpresa = {
     id: db.lastId + 1,
-    nome: (nome || "").trim(),
-    cnpj: cleanCnpj,
-    loginPortal: (loginPortal || cleanCnpj || "").trim(),
-    senhaPortal: senhaPortal || "",
-    municipio: (municipio || "").toString().trim(),
-    ativo: true,
-
-    // ✅ DONO (multi-tenant)
-    userEmail: (userEmail || "").toString().trim(),
+    ...normalized,
+    ativo: normalized.ativa !== false,
+    pfxPath: normalized.certPfxPath,
+    passphrase: normalized.certPassphrase,
+    certFile: normalized.certPfxPath,
+    certPass: normalized.certPassphrase,
 
     createdAt: now,
     updatedAt: now,
@@ -105,6 +132,45 @@ export function adicionarEmpresa({ nome, cnpj, loginPortal, senhaPortal, municip
   writeDb(db);
 
   return novaEmpresa;
+}
+
+export function atualizarEmpresa(id, payload = {}, userEmail = "") {
+  const db = readDb();
+  const idNum = Number(id);
+  const u = String(userEmail || "").trim().toLowerCase();
+  const idx = db.empresas.findIndex((emp) => {
+    if (Number(emp.id) !== idNum) return false;
+    if (!u) return true;
+    const owner = String(emp.userEmail || "").trim().toLowerCase();
+    return owner === u;
+  });
+
+  if (idx < 0) return null;
+
+  const now = new Date().toISOString();
+  const current = db.empresas[idx] || {};
+  const normalized = normalizeEmpresaPayload(
+    {
+      ...payload,
+      userEmail: current.userEmail || payload.userEmail || "",
+    },
+    current
+  );
+
+  const updated = {
+    ...current,
+    ...normalized,
+    ativo: normalized.ativa !== false,
+    pfxPath: normalized.certPfxPath,
+    passphrase: normalized.certPassphrase,
+    certFile: normalized.certPfxPath,
+    certPass: normalized.certPassphrase,
+    updatedAt: now,
+  };
+
+  db.empresas[idx] = updated;
+  writeDb(db);
+  return updated;
 }
 
 // ✅ Agora aceita userEmail opcional.

@@ -3653,21 +3653,71 @@
       const KEY_EMPRESAS = `nfseEmpresas:${(currentUser.email || "anon").toString().toLowerCase()}`;
       const empresasGrid = document.getElementById("empresasGrid");
       const empresasSearch = document.getElementById("empresasSearch");
+      let empresasCache = [];
 
       function loadEmpresas() {
-        try {
-          const raw = localStorage.getItem(KEY_EMPRESAS);
-          const arr = raw ? JSON.parse(raw) : [];
-          return Array.isArray(arr) ? arr : [];
-        } catch (e) {
-          return [];
-        }
+        return Array.isArray(empresasCache) ? empresasCache : [];
       }
 
       function saveEmpresas(list) {
+        empresasCache = Array.isArray(list) ? list : [];
         try {
-          localStorage.setItem(KEY_EMPRESAS, JSON.stringify(list || []));
+          localStorage.setItem(KEY_EMPRESAS, JSON.stringify(empresasCache));
         } catch (e) {}
+      }
+
+      function mapEmpresaServerToUi(e = {}) {
+        const login = (e.portalLogin ?? e.loginPortal ?? "").toString();
+        const senha = (e.portalSenha ?? e.senhaPortal ?? "").toString();
+        const certPfxPath = (e.certPfxPath ?? e.pfxPath ?? e.certFile ?? "").toString();
+        const certPassphrase = (e.certPassphrase ?? e.passphrase ?? e.certPass ?? "").toString();
+        return {
+          ...e,
+          id: e.id,
+          portalLogin: login,
+          portalSenha: senha,
+          loginPortal: login,
+          senhaPortal: senha,
+          certPfxPath,
+          certPassphrase,
+          pfxPath: certPfxPath,
+          passphrase: certPassphrase,
+          certFile: certPfxPath,
+          certPass: certPassphrase,
+          ativa: e.ativa !== false && String(e.status || "ATIVO").toUpperCase() !== "INATIVO",
+        };
+      }
+
+      function mapEmpresaUiToServer(emp = {}) {
+        return {
+          id: emp.id,
+          nome: emp.nome || "",
+          cnpj: (emp.cnpj || "").toString().replace(/\D/g, ""),
+          razaoSocial: emp.razaoSocial || "",
+          inscricaoEstadual: emp.inscricaoEstadual || "",
+          uf: emp.uf || "",
+          cidade: emp.cidade || "",
+          endereco: emp.endereco || "",
+          telefone: emp.telefone || "",
+          email: emp.email || "",
+          status: (emp.status || (emp.ativa === false ? "INATIVO" : "ATIVO")).toUpperCase(),
+          ativa: emp.ativa !== false,
+          authType: emp.authType || "Login e Senha",
+          loginPortal: emp.portalLogin || emp.loginPortal || "",
+          senhaPortal: emp.portalSenha || emp.senhaPortal || "",
+          municipio: emp.municipio || "",
+          certPfxPath: emp.certPfxPath || emp.pfxPath || emp.certFile || "",
+          certPassphrase: emp.certPassphrase || emp.passphrase || emp.certPass || "",
+        };
+      }
+
+      async function refreshEmpresasFromServer() {
+        const res = await fetch("/api/empresas", { credentials: "include" });
+        const j = await res.json().catch(() => ({}));
+        if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao carregar empresas do servidor.");
+        const list = Array.isArray(j.empresas) ? j.empresas.map(mapEmpresaServerToUi) : [];
+        saveEmpresas(list);
+        return list;
       }
 
       function formatCNPJ(v) {
@@ -3871,7 +3921,7 @@
 
       // eventos de editar/excluir (delegation)
       if (empresasGrid) {
-        empresasGrid.addEventListener("click", (ev) => {
+        empresasGrid.addEventListener("click", async (ev) => {
           const btn = ev.target?.closest?.("button[data-action]");
           if (!btn) return;
 
@@ -3889,8 +3939,18 @@
           }
 
           if (action === "delete") {
-            const list = loadEmpresas().filter((e) => String(e.id) !== String(id));
-            saveEmpresas(list);
+            try {
+              const res = await fetch(`/api/empresas/${encodeURIComponent(id)}`, {
+                method: "DELETE",
+                credentials: "include",
+              });
+              const j = await res.json().catch(() => ({}));
+              if (!res.ok || !j?.ok) throw new Error(j?.error || "Falha ao remover empresa.");
+              await refreshEmpresasFromServer();
+            } catch (err) {
+              alert(err?.message || "Erro ao remover empresa.");
+              return;
+            }
             renderEmpresas();
             updateCapturaLoteButton();
             updateCapturaIndividualButton();
@@ -3995,34 +4055,46 @@
             }
           }
 
-          const list = loadEmpresas();
-          if (id) {
-            const idx = list.findIndex((e) => String(e.id) === String(id));
-            if (idx >= 0) {
-              list[idx] = {
-                ...list[idx],
-                nome, cnpj, razaoSocial, inscricaoEstadual, uf, cidade, endereco, telefone, email, status, authType, portalLogin, portalSenha, ativa,
-                certPfxPath: certPfxPath || list[idx].certPfxPath || list[idx].pfxPath || "",
-                certPassphrase: certPassphrase || list[idx].certPassphrase || list[idx].passphrase || "",
-                pfxPath: certPfxPath || list[idx].pfxPath || "",
-                passphrase: certPassphrase || list[idx].passphrase || "",
-                certFile: certPfxPath || list[idx].certFile || "",
-                certPass: certPassphrase || list[idx].certPass || "",
-              };
-            }
-          } else {
-            list.push({
-              id: empresaRecordId, nome, cnpj, razaoSocial, inscricaoEstadual, uf, cidade, endereco, telefone, email, status, authType, portalLogin, portalSenha, ativa,
-              certPfxPath: certPfxPath || "",
-              certPassphrase: certPassphrase || "",
-              pfxPath: certPfxPath || "",
-              passphrase: certPassphrase || "",
-              certFile: certPfxPath || "",
-              certPass: certPassphrase || "",
+          const payload = mapEmpresaUiToServer({
+            id: empresaRecordId,
+            nome,
+            cnpj,
+            razaoSocial,
+            inscricaoEstadual,
+            uf,
+            cidade,
+            endereco,
+            telefone,
+            email,
+            status,
+            authType,
+            portalLogin,
+            portalSenha,
+            ativa,
+            municipio: cidade || "",
+            certPfxPath: certPfxPath || "",
+            certPassphrase: certPassphrase || "",
+          });
+
+          try {
+            const endpoint = id ? `/api/empresas/${encodeURIComponent(id)}` : "/api/empresas";
+            const method = id ? "PUT" : "POST";
+            const resp = await fetch(endpoint, {
+              method,
+              credentials: "include",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
             });
+            const j = await resp.json().catch(() => ({}));
+            if (!resp.ok || !j?.ok) {
+              throw new Error(j?.error || "Falha ao salvar empresa no servidor.");
+            }
+            await refreshEmpresasFromServer();
+          } catch (err) {
+            alert(err?.message || "Erro ao salvar empresa.");
+            return;
           }
 
-          saveEmpresas(list);
           closeModal();
           renderEmpresas();
           updateCapturaLoteButton();
@@ -4111,6 +4183,7 @@
       const KEY_FILA = `nfseFila:${(currentUser.email || "anon").toString().toLowerCase()}`;
       const KEY_HIST = `nfseHistorico:${(currentUser.email || "anon").toString().toLowerCase()}`;
       const KEY_DOWNLOADS = `nfseDownloads:${(currentUser.email || "anon").toString().toLowerCase()}`;
+      let historicoApiCache = [];
 
       function loadList(key) {
         try {
@@ -4125,6 +4198,45 @@
         try {
           localStorage.setItem(key, JSON.stringify(arr || []));
         } catch (e) {}
+      }
+
+      function normalizeHistoricoLevel(status = "") {
+        const s = String(status || "").toLowerCase();
+        if (["sucesso", "concluida", "concluído", "concluido", "ok"].includes(s)) return "Sucesso";
+        if (["erro", "falha", "error"].includes(s)) return "Erro";
+        return "Info";
+      }
+
+      function getHistoricoCombined() {
+        const local = loadList(KEY_HIST);
+        const api = Array.isArray(historicoApiCache) ? historicoApiCache : [];
+        const map = new Map();
+        for (const item of api) map.set(String(item.id), item);
+        for (const item of local) map.set(String(item.id), item);
+        return Array.from(map.values()).sort((a, b) => {
+          const ta = new Date(a?.createdAt || 0).getTime();
+          const tb = new Date(b?.createdAt || 0).getTime();
+          return tb - ta;
+        });
+      }
+
+      async function refreshHistoricoFromServer() {
+        try {
+          const res = await fetch("/api/historico?limit=300", { credentials: "include" });
+          const j = await res.json().catch(() => ({}));
+          const items = Array.isArray(j?.items) ? j.items : Array.isArray(j?.historico) ? j.historico : [];
+          historicoApiCache = items.map((x) => ({
+            id: `api_${x.id}`,
+            level: normalizeHistoricoLevel(x.status),
+            tipo: x.tipo || "captura",
+            status: String(x.status || "").toLowerCase(),
+            createdAt: x.dataHora || new Date().toISOString(),
+            message: x.detalhes || `${x.tipo || "Captura"} - ${x.empresaNome || ""}`.trim(),
+            meta: { rawLogs: [] },
+          }));
+        } catch (_) {
+          historicoApiCache = [];
+        }
       }
 
       function nowISO() {
@@ -4235,7 +4347,7 @@
 
       function updateKPIsFromStorage() {
         const fila = loadList(KEY_FILA);
-        const hist = loadList(KEY_HIST);
+        const hist = getHistoricoCombined();
         const kFila = document.getElementById("kpiFila");
         if (kFila) kFila.textContent = String(fila.length || 0);
         const concluidas = hist.filter((x) => x?.status === "concluida").length;
@@ -4265,7 +4377,7 @@
         if (!recentesBox || !logsBox) return;
 
         const fila = loadList(KEY_FILA).slice(0, 5);
-        const hist = loadList(KEY_HIST);
+        const hist = getHistoricoCombined();
         const logs = hist.slice(0, 5);
 
         if (!fila.length) {
@@ -4496,6 +4608,10 @@
             renderHistoricoFromStorage();
             renderDownloads();
             updateCapturaLoteButton();
+            refreshHistoricoFromServer().then(() => {
+              renderHistoricoFromStorage(true);
+              updateKPIsFromStorage();
+            });
           }
         });
       }
@@ -4759,6 +4875,10 @@
             renderHistoricoFromStorage();
             renderDownloads();
             updateCapturaIndividualButton();
+            refreshHistoricoFromServer().then(() => {
+              renderHistoricoFromStorage(true);
+              updateKPIsFromStorage();
+            });
           }
         });
       }
@@ -4876,7 +4996,7 @@
         const q = String(qEl?.value || "").trim().toLowerCase();
         const filtro = String(filtroEl?.value || "Todos").trim().toLowerCase();
 
-        const hist = loadList(KEY_HIST);
+        const hist = getHistoricoCombined();
         if (!hist.length) {
           listEl.innerHTML = `
             <div class="glass-strong rounded-xl2 p-5 text-center text-white/55">
@@ -5033,7 +5153,14 @@
       showView("view-dashboard");
 
       // init: empresas / lote / ✅ individual / kpis / fila
-      (function init() {
+      (async function init() {
+        // carrega cache local imediato para render rápido
+        try {
+          const raw = localStorage.getItem(KEY_EMPRESAS);
+          const arr = raw ? JSON.parse(raw) : [];
+          if (Array.isArray(arr)) saveEmpresas(arr);
+        } catch (_) {}
+
         renderEmpresas();
         renderLoteEmpresas();
         renderCapturaIndividualEmpresas();
@@ -5042,6 +5169,20 @@
         renderDownloads();
         renderHistoricoFromStorage();
         updateCapturaIndividualButton();
+
+        // sincroniza com servidor para manter dados por login em qualquer dispositivo
+        try {
+          await refreshEmpresasFromServer();
+          await refreshHistoricoFromServer();
+          renderEmpresas();
+          renderLoteEmpresas();
+          renderCapturaIndividualEmpresas();
+          renderHistoricoFromStorage(true);
+          updateKPIsFromStorage();
+          renderDownloads();
+        } catch (e) {
+          console.warn("[INIT] Sincronização inicial falhou:", e?.message || e);
+        }
       })();
     </script>
 

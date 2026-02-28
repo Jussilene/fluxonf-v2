@@ -12,7 +12,7 @@ import cookieParser from "cookie-parser";
 import { runManualDownload, runLoteDownload } from "./bot/nfseBot.js";
 
 // ✅ store único (JSON), agora com suporte a userEmail
-import { listarEmpresas, adicionarEmpresa, removerEmpresa } from "./utils/empresasStore.js";
+import { listarEmpresas, adicionarEmpresa, atualizarEmpresa, removerEmpresa } from "./utils/empresasStore.js";
 
 // ✅ HISTÓRICO
 import historicoRoutes from "./emissao/routes/historico.routes.js";
@@ -138,7 +138,8 @@ function capturePlanLimit(planCode = "", role = "") {
 }
 
 app.post("/api/empresas", (req, res) => {
-  const { nome, cnpj, loginPortal, senhaPortal, municipio } = req.body || {};
+  const payload = req.body || {};
+  const { nome, cnpj } = payload;
   const userEmail = req.userEmail || "";
 
   if (!nome || !cnpj) {
@@ -178,16 +179,26 @@ app.post("/api/empresas", (req, res) => {
     }
   }
 
-  const nova = adicionarEmpresa({
-    nome,
-    cnpj,
-    loginPortal,
-    senhaPortal: senhaPortal || "",
-    municipio: municipio || "",
-    userEmail,
-  });
+  const nova = adicionarEmpresa({ ...payload, userEmail });
 
   return res.status(201).json({ ok: true, empresa: nova });
+});
+
+app.put("/api/empresas/:id", (req, res) => {
+  const { id } = req.params;
+  const payload = req.body || {};
+  const userEmail = req.userEmail || "";
+
+  if (!payload?.nome || !payload?.cnpj) {
+    return res.status(400).json({ ok: false, error: "Nome e CNPJ são obrigatórios." });
+  }
+
+  const empresa = atualizarEmpresa(id, payload, userEmail);
+  if (!empresa) {
+    return res.status(404).json({ ok: false, error: "Empresa não encontrada." });
+  }
+
+  return res.json({ ok: true, empresa });
 });
 
 app.delete("/api/empresas/:id", (req, res) => {
