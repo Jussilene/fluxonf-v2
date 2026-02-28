@@ -863,6 +863,27 @@
         #userConfigModal .cfg-modal-shell {
           padding: 12px;
         }
+
+        #historicoList .glass-strong .hist-row {
+          flex-direction: column;
+          align-items: stretch;
+          gap: 10px;
+        }
+
+        #historicoList .glass-strong .hist-main {
+          width: 100%;
+          min-width: 0;
+        }
+
+        #historicoList .glass-strong .hist-actions {
+          flex-wrap: wrap;
+        }
+
+        #historicoList .glass-strong .hist-time {
+          align-self: flex-start;
+          white-space: normal;
+          word-break: break-word;
+        }
       }
 
       #view-dashboard .glass.rounded-xl2.p-5,
@@ -1067,7 +1088,7 @@
                   <path d="M5 17v3h14v-3" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
                 </svg>
               </span>
-              <span>Instalar App</span>
+              <span id="installAppBtnLabel">Instalar App</span>
             </button>
             <button id="themeToggleBtn" class="btn-ghost h-11 w-11 rounded-full text-sm inline-flex items-center justify-center" title="Alternar tema">
               <span class="text-white/70">
@@ -3525,6 +3546,7 @@
       // --------- Instalação do app (PWA) ----------
       (function () {
         const btn = document.getElementById("installAppBtn");
+        const btnLabel = document.getElementById("installAppBtnLabel");
         if (!btn) return;
 
         let deferredPrompt = window.__deferredInstallPrompt || null;
@@ -3544,12 +3566,25 @@
           const ctx = getInstallContext();
           btn.disabled = false;
           btn.title = "Instalar aplicativo";
+          if (!btnLabel) return;
           if (ctx.isStandalone) {
             btn.title = "Aplicativo já instalado";
-            btn.querySelector("span:last-child").textContent = "App Instalado";
+            btnLabel.textContent = "App Instalado";
           } else {
-            btn.querySelector("span:last-child").textContent = "Instalar App";
+            btnLabel.textContent = "Instalar App";
           }
+        }
+
+        function showInstallHelp(ctx) {
+          if (ctx.isIOS) {
+            alert("iPhone/iPad: Safari > Compartilhar > Adicionar à Tela de Início.");
+            return;
+          }
+          if (ctx.isAndroid) {
+            alert("Android: menu do navegador > Instalar aplicativo (ou Adicionar à tela inicial).");
+            return;
+          }
+          alert("Desktop: use o ícone de instalação na barra de endereço ou menu do navegador > Instalar aplicativo.");
         }
 
         if ("serviceWorker" in navigator) {
@@ -3596,16 +3631,16 @@
             }
 
             if (ctx.isIOS) {
-              alert("No iPhone/iPad: toque em Compartilhar e depois em 'Adicionar à Tela de Início' para instalar o app.");
+              showInstallHelp(ctx);
               return;
             }
 
             if (ctx.isAndroid) {
-              alert("No Android: abra o menu do navegador e use 'Instalar aplicativo' ou 'Adicionar à tela inicial'.");
+              showInstallHelp(ctx);
               return;
             }
 
-            alert("No computador: abra o menu do navegador e use 'Instalar aplicativo' (ou o ícone de instalação na barra de endereço).");
+            showInstallHelp(ctx);
           });
         }
 
@@ -4888,27 +4923,27 @@
 
             return `
               <div class="glass-strong rounded-xl2 p-5">
-                <div class="flex items-start justify-between gap-4">
-                  <div class="flex items-start gap-3">
+                <div class="hist-row flex items-start justify-between gap-4">
+                  <div class="hist-main flex items-start gap-3 min-w-0">
                     <span class="px-3 py-1 rounded-full text-xs font-semibold" style="${levelStyle}">${level}</span>
-                    <div>
-                      <p class="text-sm font-semibold">${x.message || "-"}</p>
+                    <div class="min-w-0">
+                      <p class="text-sm font-semibold break-words">${x.message || "-"}</p>
                       <p class="text-xs text-white/35 mt-2">${x.tipo || ""}</p>
                       ${
                         hasLogs
-                          ? `<div class="mt-3 flex items-center gap-2">
+                          ? `<div class="hist-actions mt-3 flex items-center gap-2">
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="toggle" data-log-id="${x.id}">Ver logs</button>
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="copy" data-log-id="${x.id}">Copiar logs</button>
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="delete" data-log-id="${x.id}" style="border-color: rgba(239,68,68,.25); color: rgba(239,68,68,.95);">Excluir</button>
                             </div>
                             <pre id="log-full-${x.id}" class="hidden mt-3 p-3 rounded-xl2 text-xs whitespace-pre-wrap bg-black/25 border border-white/10 max-h-[220px] overflow-auto">${logsText}</pre>`
-                          : `<div class="mt-3 flex items-center gap-2">
+                          : `<div class="hist-actions mt-3 flex items-center gap-2">
                               <button class="btn-ghost px-3 py-1 rounded-xl2 text-xs" data-log-action="delete" data-log-id="${x.id}" style="border-color: rgba(239,68,68,.25); color: rgba(239,68,68,.95);">Excluir</button>
                             </div>`
                       }
                     </div>
                   </div>
-                  <span class="text-xs text-white/45">${(x.createdAt || "").toString().slice(0, 19).replace("T", " ")}</span>
+                  <span class="hist-time text-xs text-white/45">${(x.createdAt || "").toString().slice(0, 19).replace("T", " ")}</span>
                 </div>
               </div>
             `;
