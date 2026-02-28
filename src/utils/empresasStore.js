@@ -86,7 +86,17 @@ function normalizeEmpresaPayload(input = {}, base = {}) {
     status: (input.status ?? base.status ?? "ATIVO").toString().trim().toUpperCase(),
     ativa: input.ativa ?? base.ativa ?? true,
     certPfxPath: (input.certPfxPath ?? input.pfxPath ?? input.certFile ?? base.certPfxPath ?? base.pfxPath ?? base.certFile ?? "").toString().trim(),
-    certPassphrase: (input.certPassphrase ?? input.passphrase ?? input.certPass ?? base.certPassphrase ?? base.passphrase ?? base.certPass ?? "").toString(),
+    certPassphrase: (
+      input.certPassphrase ??
+      input.certPfxPassphrase ??
+      input.passphrase ??
+      input.certPass ??
+      base.certPassphrase ??
+      base.certPfxPassphrase ??
+      base.passphrase ??
+      base.certPass ??
+      ""
+    ).toString(),
   };
 }
 
@@ -122,6 +132,7 @@ export function adicionarEmpresa(payload = {}) {
     passphrase: normalized.certPassphrase,
     certFile: normalized.certPfxPath,
     certPass: normalized.certPassphrase,
+    certPfxPassphrase: normalized.certPassphrase,
 
     createdAt: now,
     updatedAt: now,
@@ -165,6 +176,7 @@ export function atualizarEmpresa(id, payload = {}, userEmail = "") {
     passphrase: normalized.certPassphrase,
     certFile: normalized.certPfxPath,
     certPass: normalized.certPassphrase,
+    certPfxPassphrase: normalized.certPassphrase,
     updatedAt: now,
   };
 

@@ -3670,7 +3670,7 @@
         const login = (e.portalLogin ?? e.loginPortal ?? "").toString();
         const senha = (e.portalSenha ?? e.senhaPortal ?? "").toString();
         const certPfxPath = (e.certPfxPath ?? e.pfxPath ?? e.certFile ?? "").toString();
-        const certPassphrase = (e.certPassphrase ?? e.passphrase ?? e.certPass ?? "").toString();
+        const certPassphrase = (e.certPassphrase ?? e.certPfxPassphrase ?? e.passphrase ?? e.certPass ?? "").toString();
         return {
           ...e,
           id: e.id,
@@ -3680,6 +3680,7 @@
           senhaPortal: senha,
           certPfxPath,
           certPassphrase,
+          certPfxPassphrase: certPassphrase,
           pfxPath: certPfxPath,
           passphrase: certPassphrase,
           certFile: certPfxPath,
@@ -3707,7 +3708,7 @@
           senhaPortal: emp.portalSenha || emp.senhaPortal || "",
           municipio: emp.municipio || "",
           certPfxPath: emp.certPfxPath || emp.pfxPath || emp.certFile || "",
-          certPassphrase: emp.certPassphrase || emp.passphrase || emp.certPass || "",
+          certPassphrase: emp.certPassphrase || emp.certPfxPassphrase || emp.passphrase || emp.certPass || "",
         };
       }
 
@@ -3799,7 +3800,7 @@
           const baseName = currentPath ? currentPath.split(/[\\/]/).pop() : "";
           certCurrent.textContent = baseName ? `Arquivo atual: ${baseName}` : "";
         }
-        document.getElementById("empresaCertPass").value = emp.certPassphrase || emp.passphrase || emp.certPass || "";
+        document.getElementById("empresaCertPass").value = emp.certPassphrase || emp.certPfxPassphrase || emp.passphrase || emp.certPass || "";
 
         const t = document.getElementById("modalEmpresaTitle");
         if (t) t.textContent = "Editar Empresa";
@@ -4540,7 +4541,7 @@
             const auth = String(e?.authType || "").toLowerCase();
             if (!auth.includes("certificado")) return false;
             const certPath = String(e?.certPfxPath || e?.pfxPath || e?.certFile || "").trim();
-            const certPass = String(e?.certPassphrase || e?.passphrase || e?.certPass || "").trim();
+            const certPass = String(e?.certPassphrase || e?.certPfxPassphrase || e?.passphrase || e?.certPass || "").trim();
             const looksLikeServerPath = /[\\/]/.test(certPath);
             return !certPath || !looksLikeServerPath || !certPass;
           });
@@ -4624,7 +4625,7 @@
                     senhaPortal: e.portalSenha || e.senhaPortal || "",
                     authType: e.authType || "Login e Senha",
                     certPfxPath: e.certPfxPath || e.pfxPath || e.certFile || null,
-                    certPassphrase: e.certPassphrase || e.passphrase || e.certPass || null,
+                    certPassphrase: e.certPassphrase || e.certPfxPassphrase || e.passphrase || e.certPass || null,
                   })),
                 }),
               });
@@ -4758,7 +4759,7 @@
         const login = (emp.portalLogin || emp.loginPortal || "").toString().trim();
         const senha = (emp.portalSenha || emp.senhaPortal || "").toString();
         const certPfxPath = emp.certPfxPath || emp.pfxPath || emp.certFile || null;
-        const certPassphrase = emp.certPassphrase || emp.passphrase || emp.certPass || null;
+        const certPassphrase = emp.certPassphrase || emp.certPfxPassphrase || emp.passphrase || emp.certPass || null;
 
         if (!isCert && (!login || !senha)) {
           throw new Error("Empresa sem login/senha do portal. Cadastre as credenciais para capturar.");
