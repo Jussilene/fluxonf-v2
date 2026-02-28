@@ -775,27 +775,63 @@
         }
 
         #topBar {
-          flex-direction: row;
-          align-items: center;
-          gap: 10px;
+          flex-direction: column;
+          align-items: stretch;
+          gap: 12px;
         }
 
         #topBarTitleWrap {
           display: flex;
-          align-items: center;
+          align-items: flex-start;
           gap: 10px;
           min-width: 0;
-          flex: 1;
+          width: 100%;
+        }
+
+        #topBarTitleWrap > div {
+          min-width: 0;
         }
 
         #topBarActions {
-          width: auto;
-          justify-content: flex-end;
+          width: 100%;
+          justify-content: flex-start;
           flex-wrap: wrap;
+          gap: 8px;
+        }
+
+        #installAppBtn {
+          order: 3;
+          width: 100%;
+          justify-content: center;
+        }
+
+        #themeToggleBtn {
+          order: 1;
+        }
+
+        #topBarActions .relative {
+          order: 2;
+          margin-left: auto;
+        }
+
+        #userMenuBtn {
+          max-width: 100%;
         }
 
         #pageTitle {
           font-size: 1.6rem;
+        }
+
+        #userConfigModal {
+          align-items: flex-start;
+          padding: 10px;
+        }
+
+        #userConfigModal .cfg-modal-shell {
+          width: 100%;
+          max-height: calc(100vh - 20px);
+          margin-top: 4px;
+          padding: 14px;
         }
       }
 
@@ -810,6 +846,22 @@
 
         #pageSubtitle {
           font-size: 0.82rem;
+        }
+
+        #installAppBtn {
+          height: 42px;
+          font-size: 0.9rem;
+          padding-left: 12px;
+          padding-right: 12px;
+        }
+
+        #userMenuBtn {
+          padding-left: 10px;
+          padding-right: 10px;
+        }
+
+        #userConfigModal .cfg-modal-shell {
+          padding: 12px;
         }
       }
 
@@ -1986,7 +2038,7 @@
                   <header class="space-y-1 border-b border-white/10 pb-5">
                     <h4 class="text-2xl md:text-3xl font-bold tracking-wide text-white">TERMO DE USO - FLUXONF</h4>
                     <p class="text-base md:text-lg font-semibold text-white/95">JVR SOLUÇÕES INTELIGENTES</p>
-                    <p class="text-sm text-white/65">Última atualização: 2026</p>
+                    <p class="text-sm text-white/65">Última atualização: Fevereiro / 2026</p>
                   </header>
 
                   <section class="space-y-3">
@@ -2127,7 +2179,7 @@
                   <header class="space-y-1 border-b border-white/10 pb-5">
                     <h4 class="text-2xl md:text-3xl font-bold tracking-wide text-white">POLÍTICA DE PRIVACIDADE - FLUXONF</h4>
                     <p class="text-base md:text-lg font-semibold text-white/95">JVR SOLUÇÕES INTELIGENTES</p>
-                    <p class="text-sm text-white/65">Última atualização: 2026</p>
+                    <p class="text-sm text-white/65">Última atualização: Fevereiro / 2026</p>
                   </header>
 
                   <section class="space-y-3">
@@ -2319,7 +2371,7 @@
       const PLAN_META = {
         STARTER: {
           label: "Plano Starter",
-          desc: "CNPJs ilimitados, captura automatizada ilimitada, histórico completo, ZIP, atualizações futuras e acesso antecipado. Disponível para os 10 primeiros clientes.",
+          desc: "CNPJs ilimitados, captura automatizada ilimitada, histórico completo, ZIP, atualizações futuras e acesso antecipado.",
           support: "Suporte prioritário",
         },
         ESSENCIAL: {
@@ -3476,9 +3528,29 @@
         if (!btn) return;
 
         let deferredPrompt = window.__deferredInstallPrompt || null;
-        const isIOS = /iphone|ipad|ipod/i.test(navigator.userAgent || "");
-        const isStandalone =
-          window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+
+        function getInstallContext() {
+          const ua = (navigator.userAgent || "").toLowerCase();
+          const isIOS = /iphone|ipad|ipod/.test(ua);
+          const isAndroid = /android/.test(ua);
+          const isStandalone =
+            window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+          const isSecure =
+            window.isSecureContext || ["localhost", "127.0.0.1"].includes(String(location.hostname || "").toLowerCase());
+          return { isIOS, isAndroid, isStandalone, isSecure };
+        }
+
+        function syncInstallBtnLabel() {
+          const ctx = getInstallContext();
+          btn.disabled = false;
+          btn.title = "Instalar aplicativo";
+          if (ctx.isStandalone) {
+            btn.title = "Aplicativo já instalado";
+            btn.querySelector("span:last-child").textContent = "App Instalado";
+          } else {
+            btn.querySelector("span:last-child").textContent = "Instalar App";
+          }
+        }
 
         if ("serviceWorker" in navigator) {
           window.addEventListener("load", () => {
@@ -3488,19 +3560,27 @@
 
         window.addEventListener("nfse-install-available", () => {
           deferredPrompt = window.__deferredInstallPrompt || null;
+          syncInstallBtnLabel();
         });
 
         window.addEventListener("appinstalled", () => {
           deferredPrompt = null;
           window.__deferredInstallPrompt = null;
-          btn.textContent = "App Instalado";
+          syncInstallBtnLabel();
         });
 
         if (!btn.dataset.bound) {
           btn.dataset.bound = "1";
           btn.addEventListener("click", async () => {
-            if (isStandalone) {
+            const ctx = getInstallContext();
+
+            if (ctx.isStandalone) {
               alert("Aplicativo já instalado neste dispositivo.");
+              return;
+            }
+
+            if (!ctx.isSecure) {
+              alert("Para instalar o app, acesse em HTTPS (com domínio/certificado SSL). Em HTTP por IP, o navegador bloqueia a instalação.");
               return;
             }
 
@@ -3508,18 +3588,28 @@
               deferredPrompt.prompt();
               try {
                 const choice = await deferredPrompt.userChoice;
-                if (choice?.outcome === "accepted") return;
+                if (choice?.outcome === "accepted") {
+                  syncInstallBtnLabel();
+                  return;
+                }
               } catch (e) {}
             }
 
-            if (isIOS) {
+            if (ctx.isIOS) {
               alert("No iPhone/iPad: toque em Compartilhar e depois em 'Adicionar à Tela de Início' para instalar o app.");
               return;
             }
 
-            alert("No computador ou Android: abra o menu do navegador e use 'Instalar aplicativo' ou 'Adicionar à área de trabalho'.");
+            if (ctx.isAndroid) {
+              alert("No Android: abra o menu do navegador e use 'Instalar aplicativo' ou 'Adicionar à tela inicial'.");
+              return;
+            }
+
+            alert("No computador: abra o menu do navegador e use 'Instalar aplicativo' (ou o ícone de instalação na barra de endereço).");
           });
         }
+
+        syncInstallBtnLabel();
       })();
 
       // =========================
@@ -4827,6 +4917,33 @@
       }
 
       const historicoList = document.getElementById("historicoList");
+
+      async function copyTextWithFallback(text) {
+        if (!text) return false;
+        try {
+          if (navigator.clipboard && window.isSecureContext) {
+            await navigator.clipboard.writeText(text);
+            return true;
+          }
+        } catch (_) {}
+        try {
+          const ta = document.createElement("textarea");
+          ta.value = text;
+          ta.setAttribute("readonly", "readonly");
+          ta.style.position = "fixed";
+          ta.style.left = "-9999px";
+          ta.style.top = "-9999px";
+          document.body.appendChild(ta);
+          ta.focus();
+          ta.select();
+          const ok = document.execCommand("copy");
+          document.body.removeChild(ta);
+          return !!ok;
+        } catch (_) {
+          return false;
+        }
+      }
+
       if (historicoList && !historicoList.dataset.bound) {
         historicoList.dataset.bound = "1";
         historicoList.addEventListener("click", async (ev) => {
@@ -4846,7 +4963,8 @@
           if (action === "copy") {
             if (!pre) return;
             try {
-              await navigator.clipboard.writeText(pre.textContent || "");
+              const ok = await copyTextWithFallback(pre.textContent || "");
+              if (!ok) throw new Error("copy-failed");
               btn.textContent = "Copiado";
               setTimeout(() => (btn.textContent = "Copiar logs"), 1200);
             } catch (e) {
