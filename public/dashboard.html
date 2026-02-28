@@ -3764,7 +3764,7 @@
           }
 
           if (action === "delete") {
-            const list = loadEmpresas().filter((e) => e.id !== id);
+            const list = loadEmpresas().filter((e) => String(e.id) !== String(id));
             saveEmpresas(list);
             renderEmpresas();
             updateCapturaLoteButton();
@@ -3773,7 +3773,7 @@
           }
 
           if (action === "edit") {
-            const emp = loadEmpresas().find((e) => e.id === id);
+            const emp = loadEmpresas().find((e) => String(e.id) === String(id));
             if (!emp) return;
             fillEmpresaForm(emp);
             openModal();
@@ -3872,7 +3872,7 @@
 
           const list = loadEmpresas();
           if (id) {
-            const idx = list.findIndex((e) => e.id === id);
+            const idx = list.findIndex((e) => String(e.id) === String(id));
             if (idx >= 0) {
               list[idx] = {
                 ...list[idx],
@@ -4522,7 +4522,7 @@
           const empresaId = (ciEmpresa?.value || "").trim();
           if (!empresaId) return;
 
-          const emp = loadEmpresas().find((e) => e.id === empresaId);
+          const emp = loadEmpresas().find((e) => String(e.id) === String(empresaId));
           if (!emp) {
             alert("Empresa inválida. Selecione novamente.");
             return;
