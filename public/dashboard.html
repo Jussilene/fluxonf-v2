@@ -686,6 +686,27 @@
         display: none !important;
       }
 
+      .dashboard-recentes-row,
+      .dashboard-logs-row {
+        min-width: 0;
+      }
+
+      .dashboard-recentes-main,
+      .dashboard-logs-main {
+        min-width: 0;
+      }
+
+      .dashboard-log-message {
+        white-space: normal;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .dashboard-status-badge {
+        flex-shrink: 0;
+        white-space: nowrap;
+      }
+
       .empresa-modal-shell {
         max-height: calc(100vh - 2rem);
         display: flex;
@@ -805,9 +826,9 @@
         }
 
         #topBar {
-          flex-direction: column;
-          align-items: stretch;
-          gap: 12px;
+          flex-direction: row;
+          align-items: flex-start;
+          gap: 10px;
         }
 
         #topBarTitleWrap {
@@ -815,7 +836,7 @@
           align-items: flex-start;
           gap: 10px;
           min-width: 0;
-          width: 100%;
+          flex: 1 1 auto;
         }
 
         #topBarTitleWrap > div {
@@ -823,9 +844,10 @@
         }
 
         #topBarActions {
-          width: 100%;
-          justify-content: flex-start;
-          flex-wrap: wrap;
+          width: auto;
+          margin-left: auto;
+          justify-content: flex-end;
+          flex-wrap: nowrap;
           gap: 8px;
         }
 
@@ -841,7 +863,7 @@
 
         #topBarActions .relative {
           order: 2;
-          margin-left: auto;
+          margin-left: 0;
         }
 
         #userMenuBtn {
@@ -862,6 +884,17 @@
           max-height: calc(100vh - 20px);
           margin-top: 4px;
           padding: 14px;
+        }
+
+        .dashboard-recentes-row,
+        .dashboard-logs-row {
+          flex-wrap: wrap;
+          align-items: flex-start !important;
+          gap: 8px !important;
+        }
+
+        .dashboard-status-badge {
+          margin-left: auto;
         }
       }
 
@@ -4547,12 +4580,12 @@
                   : "background: rgba(245,158,11,.14); border:1px solid rgba(245,158,11,.28)";
               return `
                 <button type="button" class="w-full text-left glass-strong rounded-xl2 p-3 hover:brightness-110 transition" data-jump="view-fila">
-                  <div class="flex items-center justify-between gap-3">
-                    <div>
+                  <div class="dashboard-recentes-row flex items-center justify-between gap-3">
+                    <div class="dashboard-recentes-main">
                       <p class="text-sm font-semibold dashboard-recentes-title">${fixText(label || "-")}</p>
                       <p class="text-xs text-white/45 mt-1">${formatDashDate(j.createdAt)}</p>
                     </div>
-                    <span class="px-2.5 py-1 rounded-full text-xs font-semibold" style="${statusStyle}">${statusLabel}</span>
+                    <span class="dashboard-status-badge px-2.5 py-1 rounded-full text-xs font-semibold" style="${statusStyle}">${statusLabel}</span>
                   </div>
                 </button>
               `;
@@ -4576,12 +4609,12 @@
                   : "background: rgba(59, 130, 246, 0.14); border: 1px solid rgba(59, 130, 246, 0.28)";
               return `
                 <button type="button" class="w-full text-left hover:brightness-110 transition" data-jump="view-historico" data-historico-filtro="${level}">
-                  <div class="flex items-center justify-between gap-3">
-                    <div class="flex items-center gap-3">
-                      <span class="px-3 py-1 rounded-full text-xs font-semibold" style="${levelStyle}">${level}</span>
-                      <p class="text-sm text-white/85 truncate">${fixText(x.message || "-")}</p>
+                  <div class="dashboard-logs-row flex items-center justify-between gap-3">
+                    <div class="dashboard-logs-main flex items-center gap-3">
+                      <span class="dashboard-status-badge px-3 py-1 rounded-full text-xs font-semibold" style="${levelStyle}">${level}</span>
+                      <p class="dashboard-log-message text-sm text-white/85">${fixText(x.message || "-")}</p>
                     </div>
-                    <span class="text-xs text-white/45 whitespace-nowrap">${formatDashDate(x.createdAt)}</span>
+                    <span class="dashboard-status-badge text-xs text-white/45 whitespace-nowrap">${formatDashDate(x.createdAt)}</span>
                   </div>
                 </button>
               `;
