@@ -503,6 +503,14 @@ app.post("/api/nf/lote", async (req, res) => {
       });
     }
 
+    const MAX_EMPRESAS_LOTE = 20;
+    if (empresasBody.length > MAX_EMPRESAS_LOTE) {
+      return res.status(400).json({
+        success: false,
+        error: `Limite de ${MAX_EMPRESAS_LOTE} empresas por lote. Execute em blocos.`,
+      });
+    }
+
     const empresas = empresasBody;
 
     const baixarXml = !!req.body?.baixarXml;

@@ -673,6 +673,23 @@
         backdrop-filter: blur(3px);
       }
 
+      .empresa-modal-shell {
+        max-height: calc(100vh - 2rem);
+        display: flex;
+        flex-direction: column;
+      }
+
+      .empresa-modal-body {
+        overflow-y: auto;
+        padding-right: 2px;
+      }
+
+      @media (max-width: 640px) {
+        .empresa-modal-shell {
+          max-height: calc(100vh - 1rem);
+        }
+      }
+
       aside .text-base.font-semibold {
         font-size: 1.8rem;
         letter-spacing: -0.01em;
@@ -1315,16 +1332,16 @@
           </div>
 
           <!-- Modal (Cadastrar Empresa) -->
-          <div id="modalEmpresa" class="fixed inset-0 hidden items-center justify-center p-4 z-50">
+          <div id="modalEmpresa" class="fixed inset-0 hidden items-start md:items-center justify-center p-2 md:p-4 z-50 overflow-y-auto">
             <div class="modal-backdrop absolute inset-0"></div>
 
-            <div class="relative w-full max-w-[760px] glass-strong rounded-xl2 p-6">
+            <div class="empresa-modal-shell relative w-full max-w-[760px] glass-strong rounded-xl2 p-4 md:p-6">
               <div class="flex items-center justify-between">
                 <h3 class="text-xl font-semibold" id="modalEmpresaTitle">Cadastrar Empresa</h3>
                 <button id="modalEmpresaClose" class="text-white/55 hover:text-white/85">✕</button>
               </div>
 
-              <div class="mt-6 space-y-4">
+              <div class="empresa-modal-body mt-6 space-y-4">
                 <!-- hidden id (ediÃƒÂ§ÃƒÂ£o) -->
                 <input id="empresaId" type="hidden" />
 
@@ -3472,13 +3489,18 @@
       const modalCancel = document.getElementById("modalEmpresaCancel");
       const modalBackdrop = modal ? modal.querySelector(".modal-backdrop") : null;
 
+      let previousBodyOverflow = "";
+
       function openModal() {
         if (!modal) return;
+        previousBodyOverflow = document.body.style.overflow || "";
+        document.body.style.overflow = "hidden";
         modal.classList.remove("hidden");
         modal.classList.add("flex");
       }
       function closeModal() {
         if (!modal) return;
+        document.body.style.overflow = previousBodyOverflow;
         modal.classList.add("hidden");
         modal.classList.remove("flex");
       }
@@ -4103,6 +4125,22 @@
       const btnSelecionarTodasLote = document.getElementById("btnSelecionarTodasLote");
       const btnCapturarLote = document.getElementById("btnCapturarLote");
       const labelCapturarLote = document.getElementById("labelCapturarLote");
+      const LOTE_MAX_EMPRESAS = 20;
+
+      function enforceLoteSelectionLimit(preferredCb = null) {
+        if (!loteEmpresasList) return true;
+        const selected = Array.from(loteEmpresasList.querySelectorAll('input[type="checkbox"][data-emp-id]:checked'));
+        if (selected.length <= LOTE_MAX_EMPRESAS) return true;
+
+        if (preferredCb && preferredCb.checked) {
+          preferredCb.checked = false;
+        } else {
+          selected.slice(LOTE_MAX_EMPRESAS).forEach((cb) => (cb.checked = false));
+        }
+
+        alert(`Limite de ${LOTE_MAX_EMPRESAS} empresas por lote. Execute este lote e depois rode o próximo bloco.`);
+        return false;
+      }
 
       function renderLoteEmpresas() {
         if (!loteEmpresasList) return;
@@ -4135,7 +4173,10 @@
 
         // listener para atualizar o botÃƒÂ£o quando marca/desmarca
         loteEmpresasList.querySelectorAll('input[type="checkbox"][data-emp-id]').forEach((cb) => {
-          cb.addEventListener("change", updateCapturaLoteButton);
+          cb.addEventListener("change", () => {
+            enforceLoteSelectionLimit(cb);
+            updateCapturaLoteButton();
+          });
         });
 
         updateCapturaLoteButton();
@@ -4167,8 +4208,18 @@
         btnSelecionarTodasLote.addEventListener("click", () => {
           if (!loteEmpresasList) return;
           const all = Array.from(loteEmpresasList.querySelectorAll('input[type="checkbox"][data-emp-id]'));
-          const anyUnchecked = all.some((x) => !x.checked);
-          all.forEach((x) => (x.checked = anyUnchecked));
+          const checked = all.filter((x) => x.checked);
+
+          if (checked.length > 0) {
+            all.forEach((x) => (x.checked = false));
+            updateCapturaLoteButton();
+            return;
+          }
+
+          all.slice(0, LOTE_MAX_EMPRESAS).forEach((x) => (x.checked = true));
+          if (all.length > LOTE_MAX_EMPRESAS) {
+            alert(`Foram selecionadas as primeiras ${LOTE_MAX_EMPRESAS} empresas. Rode este lote e depois selecione as próximas.`);
+          }
           updateCapturaLoteButton();
         });
       }
@@ -4537,6 +4588,10 @@
         btnCapturarLote.addEventListener("click", async () => {
           const ids = getSelectedEmpresaIdsLote();
           if (!ids.length) return;
+          if (ids.length > LOTE_MAX_EMPRESAS) {
+            alert(`Selecione no máximo ${LOTE_MAX_EMPRESAS} empresas por execução em lote.`);
+            return;
+          }
           const idsSet = new Set(ids.map((v) => String(v)));
           const empresas = loadEmpresas().filter((e) => idsSet.has(String(e?.id)));
           if (!empresas.length) {
