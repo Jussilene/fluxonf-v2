@@ -1013,7 +1013,13 @@ async function runManualDownloadSimulado(params = {}) {
     console.error("[BOT] Erro ao registrar histÃ³rico (simulaÃ§Ã£o):", err);
   }
 
-  return { logs, paths: { jobDir: rootJobDir, finalDir } };
+  return {
+    logs,
+    paths: { jobDir: rootJobDir, finalDir },
+    ok: true,
+    totalArquivos: 0,
+    error: null,
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -1077,10 +1083,22 @@ async function runManualDownloadPortal(params = {}) {
   pushLog(`[BOT] Tipo: ${tipoNota} | Pasta final: ${finalDir}`);
 
   const browser = await launchNFSEBrowser();
-  const context = await browser.newContext({
-    acceptDownloads: true,
-    ...(useA1 ? { clientCertificates: certCfg.clientCertificates } : {}),
-  });
+  let useA1Active = useA1;
+  let context = null;
+  try {
+    context = await browser.newContext({
+      acceptDownloads: true,
+      ...(useA1Active ? { clientCertificates: certCfg.clientCertificates } : {}),
+    });
+  } catch (ctxErr) {
+    if (useA1Active && hasCreds) {
+      pushLog(`[BOT] Falha ao carregar certificado A1 (${ctxErr.message}). Continuando com login/senha.`);
+      useA1Active = false;
+      context = await browser.newContext({ acceptDownloads: true });
+    } else {
+      throw ctxErr;
+    }
+  }
   const page = await context.newPage();
 
   const arquivoIndexRef = { value: 0 };
@@ -1167,7 +1185,7 @@ async function runManualDownloadPortal(params = {}) {
       if (!autenticado) {
         pushLog("[BOT] Login nÃ£o autenticado apÃ³s tentativas.");
       }
-    } else if (useA1) {
+    } else if (useA1Active) {
       pushLog(`[BOT] Modo Certificado A1 ativo (PFX: ${certCfg.pfxPath}). Tentando autenticar por certificado...`);
 
       const certSelectors = [
@@ -1207,7 +1225,7 @@ async function runManualDownloadPortal(params = {}) {
 
     const isStillOnLogin = () => /\/Login(\?|$)/i.test(page.url());
 
-    if (useA1 && isStillOnLogin()) {
+    if (useA1Active && isStillOnLogin()) {
       pushLog("[BOT] A1 ainda na tela de login apos 1a tentativa. Executando retentativa automatica...");
       const certSelectorsRetry = [
         'a[href*="/EmissorNacional/Certificado"]',
@@ -1272,10 +1290,10 @@ async function runManualDownloadPortal(params = {}) {
         pushLog(`[BOT] Debug salvo: ${html}`);
       } catch {}
 
-      if (!useA1 && invalidCreds) {
+      if (!useA1Active && invalidCreds) {
         throw new Error("Usuário e/ou senha inválidos no portal NFS-e. Atualize as credenciais da empresa.");
       }
-      throw new Error(useA1 ? "NÃ£o autenticou com certificado A1 (permaneceu em /Login). Verifique PFX/senha e debug." : "NÃ£o autenticou no portal (permaneceu em /Login). Verifique o print/HTML em _debug.");
+      throw new Error(useA1Active ? "NÃ£o autenticou com certificado A1 (permaneceu em /Login). Verifique PFX/senha e debug." : "NÃ£o autenticou no portal (permaneceu em /Login). Verifique o print/HTML em _debug.");
     } else {
       pushLog("[BOT] Login OK (URL mudou).");
     }
@@ -1609,7 +1627,13 @@ async function runManualDownloadPortal(params = {}) {
     }
   }
 
-  return { logs, paths: { jobDir: rootJobDir, finalDir } };
+  return {
+    logs,
+    paths: { jobDir: rootJobDir, finalDir },
+    ok: !teveErro,
+    totalArquivos: arquivoIndexRef.value,
+    error: teveErro ? erroExecucao || "Falha na captura" : null,
+  };
 }
 
 // ---------------------------------------------------------------------
@@ -1665,6 +1689,14 @@ export async function runLoteDownload(empresas = [], options = {}) {
 
   const loteJobPaths = buildJobPaths(pastaDestino, dataInicial, dataFinal);
   pushLog(`[BOT] Lote JobDir: ${loteJobPaths.jobDir}`);
+  const resumo = {
+    totalEmpresas: empresas.length,
+    empresasOk: 0,
+    empresasFalha: 0,
+    empresasComArquivos: 0,
+    totalArquivos: 0,
+    falhas: [],
+  };
 
   for (const emp of empresas) {
     pushLog("--------------------------------------------------------------");
@@ -1675,9 +1707,15 @@ export async function runLoteDownload(empresas = [], options = {}) {
     const authType = String(emp.authType || "");
     const isCert = authType.toLowerCase().includes("certificado");
     const hasCreds = !!(login && senha);
+    const empFalhas = [];
+    let empArquivos = 0;
 
     if (usePortal && !hasCreds && !isCert) {
-      pushLog("[BOT] Login/senha da empresa nÃ£o configurados. Pulando.");
+      const motivo = "Login/senha da empresa nÃ£o configurados.";
+      pushLog(`[BOT] ${motivo} Pulando.`);
+      empFalhas.push({ tipo: "autenticacao", motivo });
+      resumo.empresasFalha += 1;
+      resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
       continue;
     }
 
@@ -1691,32 +1729,39 @@ export async function runLoteDownload(empresas = [], options = {}) {
     ensureDir(empresaDir);
 
     for (const t of tipos) {
+      let result = null;
       if (usePortal) {
-        await runManualDownloadPortal({
-          dataInicial,
-          dataFinal,
-          tipoNota: t,
-          baixarXml,
-          baixarPdf,
-          pastaDestino,
-          login,
-          senha,
-          authType,
-          usarCertificadoA1: isCert,
-          certPfxPath: emp.certPfxPath || emp.pfxPath || null,
-          certPassphrase: emp.certPassphrase || emp.passphrase || null,
-          empresaId: emp.id || emp.cnpj,
-          empresaNome: emp.nome,
-          modoExecucao: "lote",
-          onLog: (msg) => pushLog(msg),
-          jobDir: empresaDir,
+        try {
+          result = await runManualDownloadPortal({
+            dataInicial,
+            dataFinal,
+            tipoNota: t,
+            baixarXml,
+            baixarPdf,
+            pastaDestino,
+            login,
+            senha,
+            authType,
+            usarCertificadoA1: isCert,
+            certPfxPath: emp.certPfxPath || emp.pfxPath || null,
+            certPassphrase: emp.certPassphrase || emp.passphrase || null,
+            empresaId: emp.id || emp.cnpj,
+            empresaNome: emp.nome,
+            modoExecucao: "lote",
+            onLog: (msg) => pushLog(msg),
+            jobDir: empresaDir,
 
-          // âœ… AJUSTE: repassa usuÃ¡rio para histÃ³rico
-          usuarioEmail: usuarioEmail || null,
-          usuarioNome: usuarioNome || null,
-        });
+            // âœ… AJUSTE: repassa usuÃ¡rio para histÃ³rico
+            usuarioEmail: usuarioEmail || null,
+            usuarioNome: usuarioNome || null,
+          });
+        } catch (e) {
+          const motivo = e?.message || "Erro inesperado ao executar captura.";
+          pushLog(`[BOT] ERRO geral em ${emp.nome} (${t}): ${motivo}`);
+          empFalhas.push({ tipo: t, motivo });
+        }
       } else {
-        await runManualDownloadSimulado({
+        result = await runManualDownloadSimulado({
           dataInicial,
           dataFinal,
           tipoNota: t,
@@ -1735,15 +1780,36 @@ export async function runLoteDownload(empresas = [], options = {}) {
         });
       }
 
+      if (result) {
+        empArquivos += Number(result?.totalArquivos || 0);
+        if (result?.ok === false) {
+          empFalhas.push({ tipo: t, motivo: result?.error || "Falha na captura." });
+        }
+      }
+
       // Pequena pausa entre tipos/empresas para reduzir bloqueio do portal por muitas autenticações sequenciais.
       await new Promise((r) => setTimeout(r, 500));
+    }
+
+    resumo.totalArquivos += empArquivos;
+    if (empArquivos > 0) resumo.empresasComArquivos += 1;
+    if (empFalhas.length > 0) {
+      resumo.empresasFalha += 1;
+      resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
+      const motivosTxt = empFalhas.map((f) => `${f.tipo}: ${f.motivo}`).join(" | ");
+      pushLog(`[BOT] [ERRO] ${emp.nome} (${emp.cnpj}): ${motivosTxt}`);
+    } else {
+      resumo.empresasOk += 1;
     }
   }
 
   pushLog("--------------------------------------------------------------");
+  pushLog(
+    `[BOT] Resumo lote: ${resumo.empresasComArquivos} com arquivos, ${resumo.empresasFalha} com falha, total arquivos=${resumo.totalArquivos}.`
+  );
   pushLog(`[BOT] ExecuÃ§Ã£o em lote finalizada.`);
 
-  return { logs, paths: { jobDir: loteJobPaths.jobDir } };
+  return { logs, paths: { jobDir: loteJobPaths.jobDir }, resumo };
 }
 
 

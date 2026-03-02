@@ -4655,21 +4655,41 @@
                 zipUrl: data.downloadZipUrl,
               });
             }
+            const falhasLote = Array.isArray(data?.resumo?.falhas) ? data.resumo.falhas : [];
+            const hasFalhasLote = falhasLote.length > 0;
+            const resumoMsg = hasFalhasLote
+              ? `Captura em lote parcial: ${data?.resumo?.empresasComArquivos ?? 0} empresa(s) com arquivos e ${data?.resumo?.empresasFalha ?? falhasLote.length} com falha de acesso/captura.`
+              : "";
             hist.unshift({
               id: `log_${Date.now()}_${Math.random().toString(16).slice(2)}`,
-              level: "Sucesso",
+              level: hasFalhasLote ? "Erro" : "Sucesso",
               tipo: capturaUnica ? "captura_individual" : "captura_lote",
-              status: "concluida",
+              status: hasFalhasLote ? "parcial" : "concluida",
               createdAt: nowISO(),
               message: capturaUnica
                 ? `Captura concluída para ${empresas[0]?.nome || "empresa"}`
+                : hasFalhasLote
+                ? resumoMsg
                 : `Captura em lote concluída para ${empresas.length} empresa(s)`,
-              meta: { rawLogs: Array.isArray(data?.logs) ? data.logs : [] },
+              meta: {
+                rawLogs: Array.isArray(data?.logs) ? data.logs : [],
+                falhas: falhasLote,
+              },
             });
             saveList(KEY_HIST, hist);
-            if (fila[0] && fila[0].id === jobId) fila[0].status = "concluida";
+            if (fila[0] && fila[0].id === jobId) fila[0].status = hasFalhasLote ? "parcial" : "concluida";
             saveList(KEY_FILA, fila);
-            alert(data?.downloadZipUrl ? "Captura concluída. Download do ZIP iniciado." : "Captura concluída no servidor.");
+            if (hasFalhasLote) {
+              const lista = falhasLote
+                .slice(0, 10)
+                .map((f) => `${f?.cnpj || "sem-cnpj"} (${f?.empresa || "empresa"})`)
+                .join(", ");
+              alert(
+                `${resumoMsg}\nCNPJs com falha: ${lista}${falhasLote.length > 10 ? ", ..." : ""}\nVeja Histórico / Logs para o motivo em vermelho.`
+              );
+            } else {
+              alert(data?.downloadZipUrl ? "Captura concluída. Download do ZIP iniciado." : "Captura concluída no servidor.");
+            }
           } catch (err) {
             const msg = err?.message || "Erro ao executar captura.";
             hist.unshift({

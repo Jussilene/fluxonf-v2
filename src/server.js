@@ -538,6 +538,7 @@ app.post("/api/nf/lote", async (req, res) => {
 
     const logs = result?.logs || [];
     const finalDir = result?.paths?.jobDir || result?.jobDir || null;
+    const resumo = result?.resumo || null;
 
     let downloadZipUrl = null;
 
@@ -552,6 +553,7 @@ app.post("/api/nf/lote", async (req, res) => {
     return res.json({
       success: true,
       logs,
+      resumo,
       downloadZipUrl,
     });
   } catch (err) {
