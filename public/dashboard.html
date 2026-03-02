@@ -4544,7 +4544,12 @@
         btnCapturarLote.addEventListener("click", async () => {
           const ids = getSelectedEmpresaIdsLote();
           if (!ids.length) return;
-          const empresas = loadEmpresas().filter((e) => ids.includes(e.id));
+          const idsSet = new Set(ids.map((v) => String(v)));
+          const empresas = loadEmpresas().filter((e) => idsSet.has(String(e?.id)));
+          if (!empresas.length) {
+            alert("Nenhuma empresa selecionada para execução em lote.");
+            return;
+          }
 
           const invalidCertEmp = empresas.find((e) => {
             const auth = String(e?.authType || "").toLowerCase();
