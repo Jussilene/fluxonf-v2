@@ -5200,8 +5200,25 @@
           }
 
           if (action === "delete") {
-            const hist = loadList(KEY_HIST).filter((x) => String(x?.id) !== String(logId));
-            saveList(KEY_HIST, hist);
+            const idStr = String(logId || "");
+            if (idStr.startsWith("api_")) {
+              const apiId = idStr.replace(/^api_/, "");
+              try {
+                const r = await fetch(`/api/historico/${encodeURIComponent(apiId)}`, {
+                  method: "DELETE",
+                  credentials: "include",
+                });
+                const j = await r.json().catch(() => ({}));
+                if (!r.ok || !j?.ok) throw new Error(j?.error || "Falha ao excluir histórico.");
+                historicoApiCache = historicoApiCache.filter((x) => String(x?.id) !== idStr);
+              } catch (e) {
+                alert(e?.message || "Erro ao excluir histórico.");
+                return;
+              }
+            } else {
+              const hist = loadList(KEY_HIST).filter((x) => String(x?.id) !== idStr);
+              saveList(KEY_HIST, hist);
+            }
             updateKPIsFromStorage();
             renderHistoricoFromStorage(true);
           }

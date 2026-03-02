@@ -134,4 +134,44 @@ router.get("/:id", (req, res) => {
   }
 });
 
+/**
+ * DELETE /api/historico/:id
+ * Remove registro do histórico (respeitando multiusuário via header).
+ */
+router.delete("/:id", (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isFinite(id)) {
+      return res.status(400).json({ ok: false, success: false, error: "ID inválido." });
+    }
+
+    const headerUser = (req.userEmail || "").toString().trim();
+    let info;
+    if (headerUser) {
+      info = db
+        .prepare(
+          `DELETE FROM historico_execucoes
+           WHERE id = ? AND usuarioEmail = ?`
+        )
+        .run(id, headerUser);
+    } else {
+      info = db
+        .prepare(
+          `DELETE FROM historico_execucoes
+           WHERE id = ?`
+        )
+        .run(id);
+    }
+
+    if (!info || info.changes < 1) {
+      return res.status(404).json({ ok: false, success: false, error: "Registro não encontrado." });
+    }
+
+    return res.json({ ok: true, success: true });
+  } catch (err) {
+    console.error("[HISTORICO] erro ao excluir:", err);
+    return res.status(500).json({ ok: false, success: false, error: "Erro ao excluir histórico." });
+  }
+});
+
 export default router;
