@@ -489,14 +489,21 @@ app.post("/api/nf/lote", async (req, res) => {
 
     const userEmail = req.userEmail || "";
     const empresasBody = Array.isArray(req.body?.empresas) ? req.body.empresas : null;
-    const empresas = empresasBody && empresasBody.length ? empresasBody : listarEmpresas(userEmail);
-
-    if (!empresas || empresas.length === 0) {
+    if (!empresasBody) {
       return res.status(400).json({
         success: false,
-        error: "Nenhuma empresa cadastrada para execução em lote (para este usuário).",
+        error: "Selecione as empresas para executar o lote.",
       });
     }
+
+    if (empresasBody.length === 0) {
+      return res.status(400).json({
+        success: false,
+        error: "Nenhuma empresa selecionada para execução em lote.",
+      });
+    }
+
+    const empresas = empresasBody;
 
     const baixarXml = !!req.body?.baixarXml;
     const baixarPdf = !!req.body?.baixarPdf;
