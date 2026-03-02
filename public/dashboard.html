@@ -4528,14 +4528,38 @@
         renderDashboardResumo();
       }
 
-      function formatDashDate(v) {
+      function getDateTimePartsBr(v) {
         const d = new Date(v || Date.now());
-        if (Number.isNaN(d.getTime())) return "-";
-        const dd = String(d.getDate()).padStart(2, "0");
-        const mm = String(d.getMonth() + 1).padStart(2, "0");
-        const hh = String(d.getHours()).padStart(2, "0");
-        const mi = String(d.getMinutes()).padStart(2, "0");
-        return `${dd}/${mm} ${hh}:${mi}`;
+        if (Number.isNaN(d.getTime())) return null;
+        const parts = new Intl.DateTimeFormat("pt-BR", {
+          timeZone: "America/Sao_Paulo",
+          hour12: false,
+          year: "numeric",
+          month: "2-digit",
+          day: "2-digit",
+          hour: "2-digit",
+          minute: "2-digit",
+          second: "2-digit",
+        }).formatToParts(d);
+        const map = {};
+        for (const p of parts) {
+          if (p.type !== "literal") map[p.type] = p.value;
+        }
+        return map;
+      }
+
+      function formatDashDate(v) {
+        const p = getDateTimePartsBr(v);
+        if (!p) return "-";
+        return `${p.day}/${p.month} ${p.hour}:${p.minute}`;
+      }
+
+      function formatDateTimeIsoBr(v, withSeconds = false) {
+        const p = getDateTimePartsBr(v);
+        if (!p) return "-";
+        return withSeconds
+          ? `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}:${p.second}`
+          : `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
       }
 
       function formatEmpresasResumo(arr = [], limit = 4) {
@@ -5144,7 +5168,7 @@
                         <p class="text-xs text-white/35 mt-2">Status: ${j.status || "-"}</p>
                       </div>
                       <div class="text-right">
-                        <span class="text-xs text-white/45 block">${(j.createdAt || "").toString().slice(0, 16).replace("T", " ")}</span>
+                        <span class="text-xs text-white/45 block">${formatDateTimeIsoBr(j.createdAt, false)}</span>
                         <button class="btn-ghost mt-2 px-3 py-1 rounded-xl2 text-xs" data-fila-action="delete" data-fila-idx="${idx}" style="border-color: rgba(239,68,68,.25); color: rgba(239,68,68,.95);">Excluir</button>
                       </div>
                     </div>
@@ -5270,7 +5294,7 @@
                       }
                     </div>
                   </div>
-                  <span class="hist-time text-xs text-white/45">${(x.createdAt || "").toString().slice(0, 19).replace("T", " ")}</span>
+                  <span class="hist-time text-xs text-white/45">${formatDateTimeIsoBr(x.createdAt, true)}</span>
                 </div>
               </div>
             `;
