@@ -1095,17 +1095,55 @@ async function runManualDownloadPortal(params = {}) {
 
     // 2) Login (ou certificado A1 quando nÃ£o hÃ¡ login/senha)
     if (hasCreds) {
-      await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', login);
-      pushLog("[BOT] Login preenchido.");
+      const loginRaw = String(login || "").trim();
+      const loginDigits = loginRaw.replace(/\D/g, "");
+      const loginTentativas = [loginRaw];
+      if (loginDigits && loginDigits !== loginRaw) loginTentativas.push(loginDigits);
 
-      await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', senha);
-      pushLog("[BOT] Senha preenchida.");
+      let autenticado = false;
+      for (let i = 0; i < loginTentativas.length; i += 1) {
+        const loginAtual = loginTentativas[i];
 
-      await page.click(
-        'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
-        { timeout: 12000, noWaitAfter: true }
-      );
-      pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
+        if (!/\/Login(\?|$)/i.test(page.url())) {
+          await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
+        }
+
+        await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', "");
+        await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', "");
+        await page.type('input[name="Login"], input[id="Login"], input[type="text"]', loginAtual, { delay: 20 });
+        pushLog(`[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1})` : ""}.`);
+
+        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', String(senha || ""), { delay: 15 });
+        pushLog("[BOT] Senha preenchida.");
+
+        await page.click(
+          'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
+          { timeout: 12000, noWaitAfter: true }
+        );
+        pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
+
+        await Promise.race([
+          page.waitForURL((url) => !/\/Login(\?|$)/i.test(url.toString()), { timeout: 22000 }),
+          page.waitForTimeout(22000),
+        ]).catch(() => {});
+
+        if (!/\/Login(\?|$)/i.test(page.url())) {
+          autenticado = true;
+          break;
+        }
+
+        const bodyText = ((await page.textContent("body").catch(() => "")) || "").toLowerCase();
+        const invalid = /usu[aá]rio\s*e\/ou\s*senha\s*inv[aá]lidos?/.test(bodyText);
+        if (invalid && i < loginTentativas.length - 1) {
+          pushLog("[BOT] Portal rejeitou credenciais. Tentando novamente com login alternativo...");
+        }
+
+        await page.waitForTimeout(800);
+      }
+
+      if (!autenticado) {
+        pushLog("[BOT] Login nÃ£o autenticado apÃ³s tentativas.");
+      }
     } else if (useA1) {
       pushLog(`[BOT] Modo Certificado A1 ativo (PFX: ${certCfg.pfxPath}). Tentando autenticar por certificado...`);
 
@@ -1673,6 +1711,9 @@ export async function runLoteDownload(empresas = [], options = {}) {
           usuarioNome: usuarioNome || null,
         });
       }
+
+      // Pequena pausa entre tipos/empresas para reduzir bloqueio do portal por muitas autenticações sequenciais.
+      await new Promise((r) => setTimeout(r, 500));
     }
   }
 
