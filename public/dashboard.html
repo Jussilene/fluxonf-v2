@@ -1416,7 +1416,7 @@
                   </div>
                 </div>
 
-                <div id="empresaAuthCertBlock" class="hidden grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div id="empresaAuthCertBlock" class="grid grid-cols-1 md:grid-cols-2 gap-4">
                   <div>
                     <label class="text-sm font-semibold text-white/80">Arquivo do Certificado A1</label>
                     <input id="empresaCertFile" type="file" accept=".pfx,.p12,.pem,.cer,.crt,.key,application/x-pkcs12,application/pkcs12" class="field w-full rounded-xl2 px-4 py-3 text-sm mt-2" />
@@ -3810,12 +3810,10 @@
       }
 
       function updateEmpresaAuthBlocks() {
-        const authType = (document.getElementById("empresaAuthType")?.value || "Login e Senha").toLowerCase();
-        const isCert = authType.includes("certificado");
         const loginBlock = document.getElementById("empresaAuthLoginBlock");
         const certBlock = document.getElementById("empresaAuthCertBlock");
-        if (loginBlock) loginBlock.classList.toggle("hidden", isCert);
-        if (certBlock) certBlock.classList.toggle("hidden", !isCert);
+        if (loginBlock) loginBlock.classList.remove("hidden");
+        if (certBlock) certBlock.classList.remove("hidden");
       }
 
       function renderEmpresas() {
@@ -4011,49 +4009,44 @@
             return;
           }
 
-          const isCert = String(authType || "").toLowerCase().includes("certificado");
-          if (!isCert && (!portalLogin || !portalSenha)) {
-            alert("Para Login e Senha, preencha as credenciais do portal.");
-            return;
-          }
-          if (isCert) {
-            const selectedFile = certInput?.files?.[0] || null;
-            const looksLikeServerPath = /[\\/]/.test(String(certPfxPath || ""));
-            if (selectedFile) {
-              if (!certPassphrase) {
-                alert("Informe a senha do certificado A1.");
-                return;
-              }
-              try {
-                const pfxBase64 = await fileToBase64(selectedFile);
-                const resp = await fetch("/api/nf/certificado", {
-                  method: "POST",
-                  credentials: "include",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({
-                    usuarioEmail: currentUser?.email || "",
-                    empresaId: empresaRecordId,
-                    filename: selectedFile.name,
-                    pfxBase64,
-                    passphrase: certPassphrase,
-                  }),
-                });
-                const j = await resp.json().catch(() => ({}));
-                if (!resp.ok || !j?.ok || !j?.certPfxPath) {
-                  throw new Error(j?.error || "Falha ao salvar certificado A1.");
-                }
-                certPfxPath = j.certPfxPath;
-              } catch (err) {
-                alert(err?.message || "Erro ao salvar certificado A1.");
-                return;
-              }
-            } else if (!certPfxPath || !looksLikeServerPath) {
-              alert("Certificado A1 não está salvo no servidor. Reenvie o arquivo (.pfx/.p12) nesta empresa.");
-              return;
-            } else if (!certPassphrase) {
+          const selectedFile = certInput?.files?.[0] || null;
+          const looksLikeServerPath = /[\\/]/.test(String(certPfxPath || ""));
+          const hasLoginCreds = !!(portalLogin && portalSenha);
+
+          if (selectedFile) {
+            if (!certPassphrase) {
               alert("Informe a senha do certificado A1.");
               return;
             }
+            try {
+              const pfxBase64 = await fileToBase64(selectedFile);
+              const resp = await fetch("/api/nf/certificado", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  usuarioEmail: currentUser?.email || "",
+                  empresaId: empresaRecordId,
+                  filename: selectedFile.name,
+                  pfxBase64,
+                  passphrase: certPassphrase,
+                }),
+              });
+              const j = await resp.json().catch(() => ({}));
+              if (!resp.ok || !j?.ok || !j?.certPfxPath) {
+                throw new Error(j?.error || "Falha ao salvar certificado A1.");
+              }
+              certPfxPath = j.certPfxPath;
+            } catch (err) {
+              alert(err?.message || "Erro ao salvar certificado A1.");
+              return;
+            }
+          }
+
+          const hasCertCreds = !!(certPfxPath && looksLikeServerPath && certPassphrase);
+          if (!hasLoginCreds && !hasCertCreds) {
+            alert("Preencha Login/Senha ou Certificado A1 + senha do certificado.");
+            return;
           }
 
           const payload = mapEmpresaUiToServer({
@@ -4551,16 +4544,18 @@
             return;
           }
 
-          const invalidCertEmp = empresas.find((e) => {
-            const auth = String(e?.authType || "").toLowerCase();
-            if (!auth.includes("certificado")) return false;
+          const invalidAuthEmp = empresas.find((e) => {
+            const login = String(e?.portalLogin || e?.loginPortal || "").trim();
+            const senha = String(e?.portalSenha || e?.senhaPortal || "").trim();
             const certPath = String(e?.certPfxPath || e?.pfxPath || e?.certFile || "").trim();
             const certPass = String(e?.certPassphrase || e?.certPfxPassphrase || e?.passphrase || e?.certPass || "").trim();
             const looksLikeServerPath = /[\\/]/.test(certPath);
-            return !certPath || !looksLikeServerPath || !certPass;
+            const hasLoginCreds = !!(login && senha);
+            const hasCertCreds = !!(certPath && looksLikeServerPath && certPass);
+            return !hasLoginCreds && !hasCertCreds;
           });
-          if (invalidCertEmp) {
-            alert(`A empresa "${invalidCertEmp.nome || invalidCertEmp.cnpj || "selecionada"}" está em modo Certificado A1 sem certificado/senha válidos no servidor. Edite a empresa e reenvie o arquivo .pfx/.p12.`);
+          if (invalidAuthEmp) {
+            alert(`A empresa "${invalidAuthEmp.nome || invalidAuthEmp.cnpj || "selecionada"}" não possui credenciais válidas (Login/Senha ou Certificado A1 + senha).`);
             return;
           }
 
@@ -4788,18 +4783,17 @@
       async function executarCapturaIndividualServidor(emp, filtros) {
         const tiposSelecionados = mapTiposParaProcessar(filtros.tipos);
         const authType = (emp.authType || "Login e Senha").toString();
-        const isCert = authType.toLowerCase().includes("certificado");
 
         const login = (emp.portalLogin || emp.loginPortal || "").toString().trim();
         const senha = (emp.portalSenha || emp.senhaPortal || "").toString();
         const certPfxPath = emp.certPfxPath || emp.pfxPath || emp.certFile || null;
         const certPassphrase = emp.certPassphrase || emp.certPfxPassphrase || emp.passphrase || emp.certPass || null;
+        const hasLoginCreds = !!(login && senha);
+        const hasCertCreds = !!(certPfxPath && certPassphrase);
+        const isCert = hasCertCreds;
 
-        if (!isCert && (!login || !senha)) {
-          throw new Error("Empresa sem login/senha do portal. Cadastre as credenciais para capturar.");
-        }
-        if (isCert && (!certPfxPath || !certPassphrase)) {
-          throw new Error("Empresa em modo Certificado Digital (A1) sem arquivo/senha do certificado. Edite a empresa e configure o A1.");
+        if (!hasLoginCreds && !hasCertCreds) {
+          throw new Error("Empresa sem credenciais válidas. Informe Login/Senha ou Certificado A1 + senha.");
         }
 
         const formatos = mapFormatoDownload(filtros.formato);
@@ -4818,7 +4812,7 @@
           empresaCnpj: emp.cnpj || "",
           usuarioEmail: currentUser?.email || "",
           authType,
-          usarCertificadoA1: isCert,
+          usarCertificadoA1: hasCertCreds,
           certPfxPath,
           certPassphrase,
         };

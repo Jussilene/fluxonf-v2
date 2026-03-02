@@ -135,17 +135,20 @@ function getTipoDirFromRoot(rootJobDir, tipoNota) {
 }
 function resolveA1CertConfig(params = {}, pushLog = () => {}) {
   try {
+    const certPathHint = String(params?.certPfxPath || params?.pfxPath || process.env.NFSE_CERT_PFX_PATH || "").trim();
+    const certPassHint = String(params?.certPassphrase || params?.passphrase || process.env.NFSE_CERT_PFX_PASS || "").trim();
     const useA1 =
       params?.usarCertificadoA1 === true ||
-      String(params?.authType || "").toLowerCase().includes("certificado");
+      String(params?.authType || "").toLowerCase().includes("certificado") ||
+      (!!certPathHint && !!certPassHint);
     if (!useA1) return null;
 
     const portalOrigin =
       String(params?.certOrigin || process.env.NFSE_CERT_ORIGIN || "https://www.nfse.gov.br").trim() ||
       "https://www.nfse.gov.br";
 
-    let pfxPath = String(params?.certPfxPath || params?.pfxPath || process.env.NFSE_CERT_PFX_PATH || "").trim();
-    const passphrase = String(params?.certPassphrase || params?.passphrase || process.env.NFSE_CERT_PFX_PASS || "");
+    let pfxPath = certPathHint;
+    const passphrase = certPassHint;
     const empresaId = String(params?.empresaId || "").trim();
     const userEmail = String(params?.usuarioEmail || "").trim().toLowerCase();
 
@@ -1111,8 +1114,10 @@ async function runManualDownloadPortal(params = {}) {
     await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded" });
     pushLog("[BOT] PÃ¡gina de login carregada.");
 
-    // 2) Login (ou certificado A1 quando nÃ£o hÃ¡ login/senha)
-    if (hasCreds) {
+    // 2) Autenticacao: se houver certificado e credenciais, tenta A1 primeiro e faz fallback para login/senha.
+    const isStillOnLogin = () => /\/Login(\?|$)/i.test(page.url());
+
+    const attemptLoginWithCreds = async () => {
       const tentativasCredenciais = [];
       const seenCreds = new Set();
       const addTentativa = (l, s, label = "") => {
@@ -1134,136 +1139,86 @@ async function runManualDownloadPortal(params = {}) {
       const envSenhaRaw = String(process.env.NFSE_PASSWORD || "");
       const envLoginDigits = envLoginRaw.replace(/\D/g, "");
       addTentativa(envLoginRaw, envSenhaRaw, "env");
-      if (envLoginDigits && envLoginDigits !== envLoginRaw)
-        addTentativa(envLoginDigits, envSenhaRaw, "env-sem-mascara");
+      if (envLoginDigits && envLoginDigits !== envLoginRaw) addTentativa(envLoginDigits, envSenhaRaw, "env-sem-mascara");
 
-      let autenticado = false;
       for (let i = 0; i < tentativasCredenciais.length; i += 1) {
         const tentativa = tentativasCredenciais[i];
-        const loginAtual = tentativa.login;
-        const senhaAtual = tentativa.senha;
-
-        if (!/\/Login(\?|$)/i.test(page.url())) {
+        if (!isStillOnLogin()) {
           await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
         }
 
         await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', "");
         await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', "");
-        await page.type('input[name="Login"], input[id="Login"], input[type="text"]', loginAtual, { delay: 20 });
+        await page.type('input[name="Login"], input[id="Login"], input[type="text"]', tentativa.login, { delay: 20 });
         pushLog(
           `[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1}/${tentativasCredenciais.length}, ${tentativa.label})` : ""}.`
         );
-
-        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', senhaAtual, { delay: 15 });
+        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', tentativa.senha, { delay: 15 });
         pushLog("[BOT] Senha preenchida.");
-
         await page.click(
           'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
           { timeout: 12000, noWaitAfter: true }
         );
         pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
-
         await Promise.race([
           page.waitForURL((url) => !/\/Login(\?|$)/i.test(url.toString()), { timeout: 22000 }),
           page.waitForTimeout(22000),
         ]).catch(() => {});
-
-        if (!/\/Login(\?|$)/i.test(page.url())) {
-          autenticado = true;
-          break;
-        }
-
-        const bodyText = ((await page.textContent("body").catch(() => "")) || "").toLowerCase();
-        const invalid = /usu[aá]rio\s*e\/ou\s*senha\s*inv[aá]lidos?/.test(bodyText);
-        if (invalid && i < tentativasCredenciais.length - 1) {
-          pushLog("[BOT] Portal rejeitou credenciais. Tentando próximo par de credenciais...");
-        }
-
+        if (!isStillOnLogin()) return true;
         await page.waitForTimeout(800);
       }
+      pushLog("[BOT] Login nÃ£o autenticado apÃ³s tentativas.");
+      return false;
+    };
 
-      if (!autenticado) {
-        pushLog("[BOT] Login nÃ£o autenticado apÃ³s tentativas.");
-      }
-    } else if (useA1Active) {
+    const attemptA1 = async () => {
+      if (!useA1Active) return false;
       pushLog(`[BOT] Modo Certificado A1 ativo (PFX: ${certCfg.pfxPath}). Tentando autenticar por certificado...`);
-
-      const certSelectors = [
-        'a[href*="/EmissorNacional/Certificado"]',
-        'a[href*="/Certificado"]',
-        'a.img-certificado',
-        'a:has-text("Acesso via certificado digital")',
-      ];
-
-      let certClicked = false;
-      for (const sel of certSelectors) {
-        const link = page.locator(sel).first();
-        const exists = await link.count().catch(() => 0);
-        if (!exists) continue;
-
-        await Promise.all([
-          page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
-          link.click({ timeout: 5000 }),
-        ]).catch(() => null);
-
-        certClicked = true;
-        pushLog(`[BOT] Clique no acesso por certificado realizado (${sel}).`);
-        break;
-      }
-
-      if (!certClicked) {
-        const certUrl = new URL('/EmissorNacional/Certificado', page.url()).toString();
-        pushLog(`[BOT] Link de certificado nao encontrado na tela. Tentando URL direta: ${certUrl}`);
-        await page.goto(certUrl, { waitUntil: 'domcontentloaded', timeout: 20000 }).catch(() => null);
-      }
-    }
-
-    await Promise.race([
-      page.waitForNavigation({ waitUntil: "networkidle", timeout: 15000 }),
-      page.waitForTimeout(15000),
-    ]).catch(() => {});
-
-    const isStillOnLogin = () => /\/Login(\?|$)/i.test(page.url());
-
-    if (useA1Active && isStillOnLogin()) {
-      pushLog("[BOT] A1 ainda na tela de login apos 1a tentativa. Executando retentativa automatica...");
       const certSelectorsRetry = [
         'a[href*="/EmissorNacional/Certificado"]',
         'a[href*="/Certificado"]',
         "a.img-certificado",
         'a:has-text("Acesso via certificado digital")',
       ];
-
       for (let tentativa = 1; tentativa <= 2; tentativa++) {
         let clicked = false;
         for (const sel of certSelectorsRetry) {
           const link = page.locator(sel).first();
           const exists = await link.count().catch(() => 0);
           if (!exists) continue;
-          await link.click({ timeout: 5000 }).catch(() => {});
+          await Promise.all([
+            page.waitForNavigation({ waitUntil: "domcontentloaded", timeout: 20000 }).catch(() => null),
+            link.click({ timeout: 5000 }).catch(() => null),
+          ]).catch(() => null);
           clicked = true;
           pushLog(`[BOT] Retentativa A1 #${tentativa}: clique no acesso por certificado (${sel}).`);
           break;
         }
-
         if (!clicked) {
           const certUrlRetry = new URL("/EmissorNacional/Certificado", page.url()).toString();
-          pushLog(
-            `[BOT] Retentativa A1 #${tentativa}: link nao encontrado. Tentando URL direta: ${certUrlRetry}`
-          );
+          pushLog(`[BOT] Retentativa A1 #${tentativa}: link nao encontrado. Tentando URL direta: ${certUrlRetry}`);
           await page.goto(certUrlRetry, { waitUntil: "domcontentloaded", timeout: 25000 }).catch(() => {});
         }
-
         await Promise.race([
           page.waitForURL((url) => !/\/Login(\?|$)/i.test(url.toString()), { timeout: 25000 }),
           page.waitForTimeout(25000),
         ]).catch(() => {});
-
         if (!isStillOnLogin()) {
           pushLog(`[BOT] Retentativa A1 #${tentativa}: autenticacao concluida.`);
-          break;
+          return true;
         }
       }
+      return false;
+    };
+
+    if (useA1Active) {
+      const okA1 = await attemptA1();
+      if (!okA1 && hasCreds) {
+        pushLog("[BOT] A1 falhou. Tentando fallback por login/senha...");
+        await attemptLoginWithCreds();
+      }
+    } else if (hasCreds) {
+      await attemptLoginWithCreds();
     }
 
     // âœ… AJUSTE MÃNIMO #2: se ainda estiver no Login, salva evidÃªncias e aborta (pra nÃ£o gerar ZIP vazio)
