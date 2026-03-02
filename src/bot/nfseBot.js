@@ -1095,14 +1095,35 @@ async function runManualDownloadPortal(params = {}) {
 
     // 2) Login (ou certificado A1 quando nÃ£o hÃ¡ login/senha)
     if (hasCreds) {
+      const tentativasCredenciais = [];
+      const seenCreds = new Set();
+      const addTentativa = (l, s, label = "") => {
+        const loginNorm = String(l || "").trim();
+        const senhaNorm = String(s || "");
+        if (!loginNorm || !senhaNorm) return;
+        const key = `${loginNorm}||${senhaNorm}`;
+        if (seenCreds.has(key)) return;
+        seenCreds.add(key);
+        tentativasCredenciais.push({ login: loginNorm, senha: senhaNorm, label });
+      };
+
       const loginRaw = String(login || "").trim();
       const loginDigits = loginRaw.replace(/\D/g, "");
-      const loginTentativas = [loginRaw];
-      if (loginDigits && loginDigits !== loginRaw) loginTentativas.push(loginDigits);
+      addTentativa(loginRaw, senha, "empresa");
+      if (loginDigits && loginDigits !== loginRaw) addTentativa(loginDigits, senha, "empresa-sem-mascara");
+
+      const envLoginRaw = String(process.env.NFSE_USER || "").trim();
+      const envSenhaRaw = String(process.env.NFSE_PASSWORD || "");
+      const envLoginDigits = envLoginRaw.replace(/\D/g, "");
+      addTentativa(envLoginRaw, envSenhaRaw, "env");
+      if (envLoginDigits && envLoginDigits !== envLoginRaw)
+        addTentativa(envLoginDigits, envSenhaRaw, "env-sem-mascara");
 
       let autenticado = false;
-      for (let i = 0; i < loginTentativas.length; i += 1) {
-        const loginAtual = loginTentativas[i];
+      for (let i = 0; i < tentativasCredenciais.length; i += 1) {
+        const tentativa = tentativasCredenciais[i];
+        const loginAtual = tentativa.login;
+        const senhaAtual = tentativa.senha;
 
         if (!/\/Login(\?|$)/i.test(page.url())) {
           await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
@@ -1111,9 +1132,11 @@ async function runManualDownloadPortal(params = {}) {
         await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', "");
         await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', "");
         await page.type('input[name="Login"], input[id="Login"], input[type="text"]', loginAtual, { delay: 20 });
-        pushLog(`[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1})` : ""}.`);
+        pushLog(
+          `[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1}/${tentativasCredenciais.length}, ${tentativa.label})` : ""}.`
+        );
 
-        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', String(senha || ""), { delay: 15 });
+        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', senhaAtual, { delay: 15 });
         pushLog("[BOT] Senha preenchida.");
 
         await page.click(
@@ -1134,8 +1157,8 @@ async function runManualDownloadPortal(params = {}) {
 
         const bodyText = ((await page.textContent("body").catch(() => "")) || "").toLowerCase();
         const invalid = /usu[aá]rio\s*e\/ou\s*senha\s*inv[aá]lidos?/.test(bodyText);
-        if (invalid && i < loginTentativas.length - 1) {
-          pushLog("[BOT] Portal rejeitou credenciais. Tentando novamente com login alternativo...");
+        if (invalid && i < tentativasCredenciais.length - 1) {
+          pushLog("[BOT] Portal rejeitou credenciais. Tentando próximo par de credenciais...");
         }
 
         await page.waitForTimeout(800);
