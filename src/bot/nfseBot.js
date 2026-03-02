@@ -647,7 +647,7 @@ async function navigateToTipo(page, tipoNota, pushLog) {
       return;
     } catch {
       pushLog("[BOT] Falha ao clicar Recebidas. Tentando URL direta...");
-      await page.goto(recebidasUrl, { waitUntil: "networkidle", timeout: 20000 });
+      await page.goto(recebidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
       pushLog(`[BOT] URL atual: ${page.url()}`);
       return;
     }
@@ -658,7 +658,7 @@ async function navigateToTipo(page, tipoNota, pushLog) {
       '[BOT] Tipo "canceladas": portal costuma listar canceladas dentro de "Emitidas" (coluna SituaÃ§Ã£o). Abrindo Emitidas...'
     );
     await page
-      .goto(emitidasUrl, { waitUntil: "networkidle", timeout: 20000 })
+      .goto(emitidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 })
       .catch(async () => {
         try {
           await page.click('[title="NFS-e Emitidas"]', { timeout: 8000 });
@@ -677,7 +677,7 @@ async function navigateToTipo(page, tipoNota, pushLog) {
     return;
   } catch {
     pushLog("[BOT] Falha ao clicar Emitidas. Tentando URL direta...");
-    await page.goto(emitidasUrl, { waitUntil: "networkidle", timeout: 20000 });
+    await page.goto(emitidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
     pushLog(`[BOT] URL atual: ${page.url()}`);
     return;
   }
@@ -1100,7 +1100,8 @@ async function runManualDownloadPortal(params = {}) {
       pushLog("[BOT] Senha preenchida.");
 
       await page.click(
-        'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")'
+        'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
+        { timeout: 12000, noWaitAfter: true }
       );
       pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
     } else if (useA1) {
