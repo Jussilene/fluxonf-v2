@@ -673,6 +673,19 @@
         backdrop-filter: blur(3px);
       }
 
+      .dashboard-recentes-title {
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        word-break: break-word;
+      }
+
+      #installAppBtn {
+        display: none !important;
+      }
+
       .empresa-modal-shell {
         max-height: calc(100vh - 2rem);
         display: flex;
@@ -4492,6 +4505,14 @@
         return `${dd}/${mm} ${hh}:${mi}`;
       }
 
+      function formatEmpresasResumo(arr = [], limit = 4) {
+        const nomes = (Array.isArray(arr) ? arr : []).map((e) => String(e?.nome || "").trim()).filter(Boolean);
+        if (!nomes.length) return "";
+        if (nomes.length <= limit) return nomes.join(", ");
+        const restantes = nomes.length - limit;
+        return `${nomes.slice(0, limit).join(", ")} + ${restantes}`;
+      }
+
       function renderDashboardResumo() {
         const recentesBox = document.getElementById("dashboardRecentesContainer");
         const recentesEmpty = document.getElementById("dashboardRecentesEmpty");
@@ -4510,7 +4531,7 @@
           if (recentesEmpty) recentesEmpty.classList.add("hidden");
           recentesBox.innerHTML = fila
             .map((j) => {
-              const empresas = (j.empresas || []).map((e) => e.nome).filter(Boolean).join(", ");
+              const empresas = formatEmpresasResumo(j.empresas || []);
               const label =
                 j.tipo === "captura_lote"
                   ? `Captura em lote${empresas ? ` - ${empresas}` : ""}`
@@ -4528,7 +4549,7 @@
                 <button type="button" class="w-full text-left glass-strong rounded-xl2 p-3 hover:brightness-110 transition" data-jump="view-fila">
                   <div class="flex items-center justify-between gap-3">
                     <div>
-                      <p class="text-sm font-semibold">${fixText(label || "-")}</p>
+                      <p class="text-sm font-semibold dashboard-recentes-title">${fixText(label || "-")}</p>
                       <p class="text-xs text-white/45 mt-1">${formatDashDate(j.createdAt)}</p>
                     </div>
                     <span class="px-2.5 py-1 rounded-full text-xs font-semibold" style="${statusStyle}">${statusLabel}</span>
