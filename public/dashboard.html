@@ -4302,7 +4302,16 @@
             status: String(x.status || "").toLowerCase(),
             createdAt: x.dataHora || new Date().toISOString(),
             message: x.detalhes || `${x.tipo || "Captura"} - ${x.empresaNome || ""}`.trim(),
-            meta: { rawLogs: [] },
+            meta: {
+              rawLogs: (() => {
+                try {
+                  if (Array.isArray(x?.logsJson)) return x.logsJson;
+                  return JSON.parse(x?.logsJson || "[]");
+                } catch (_) {
+                  return [];
+                }
+              })(),
+            },
           }));
         } catch (_) {
           historicoApiCache = [];

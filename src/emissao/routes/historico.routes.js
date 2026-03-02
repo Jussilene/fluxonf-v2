@@ -38,6 +38,7 @@ router.get("/", (req, res) => {
           qtdXml,
           qtdPdf,
           totalArquivos,
+          logsJson,
           detalhes
         FROM historico_execucoes
         WHERE usuarioEmail = ?
@@ -60,6 +61,7 @@ router.get("/", (req, res) => {
           qtdXml,
           qtdPdf,
           totalArquivos,
+          logsJson,
           detalhes
         FROM historico_execucoes
         ORDER BY id DESC
@@ -113,6 +115,7 @@ router.get("/:id", (req, res) => {
           qtdXml,
           qtdPdf,
           totalArquivos,
+          logsJson,
           detalhes
         FROM historico_execucoes
         WHERE id = ?

@@ -40,7 +40,8 @@ db.exec(`
     totalArquivos INTEGER,
     status TEXT,              -- 'sucesso' | 'erro' | 'parcial'
     erros TEXT,               -- string JSON
-    detalhes TEXT             -- texto livre (ex: 'Baixou emitidas de 01/10 a 31/10')
+    detalhes TEXT,            -- texto livre (ex: 'Baixou emitidas de 01/10 a 31/10')
+    logsJson TEXT             -- JSON com logs da execução (para "ver/copiar logs" em qualquer dispositivo)
   );
 `);
 
@@ -48,6 +49,14 @@ db.exec(`
 try {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hist_usuario_data ON historico_execucoes(usuarioEmail, dataHora);`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_hist_empresa_data ON historico_execucoes(empresaId, dataHora);`);
+} catch {}
+
+// migração segura para bases antigas que ainda não têm logsJson
+try {
+  const histCols = db.prepare(`PRAGMA table_info(historico_execucoes)`).all().map((c) => c.name);
+  if (!histCols.includes("logsJson")) {
+    db.exec(`ALTER TABLE historico_execucoes ADD COLUMN logsJson TEXT;`);
+  }
 } catch {}
 
 

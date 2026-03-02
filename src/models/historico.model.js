@@ -15,6 +15,7 @@ export function registrarExecucao({
   status,
   erros,
   detalhes,
+  logs,
 }) {
   const stmt = db.prepare(`
     INSERT INTO historico_execucoes (
@@ -29,7 +30,8 @@ export function registrarExecucao({
       totalArquivos,
       status,
       erros,
-      detalhes
+      detalhes,
+      logsJson
     ) VALUES (
       @usuarioEmail,
       @usuarioNome,
@@ -42,7 +44,8 @@ export function registrarExecucao({
       @totalArquivos,
       @status,
       @erros,
-      @detalhes
+      @detalhes,
+      @logsJson
     )
   `);
 
@@ -62,6 +65,7 @@ export function registrarExecucao({
     status: status || "sucesso",
     erros: erros ? JSON.stringify(erros) : null,
     detalhes: detalhes || null,
+    logsJson: Array.isArray(logs) ? JSON.stringify(logs.slice(-2000)) : null,
   });
 }
 

@@ -1007,6 +1007,7 @@ async function runManualDownloadSimulado(params = {}) {
       totalArquivos: 0,
       status: "simulado",
       detalhes: `SimulaÃ§Ã£o - tipoNota=${tipoNota}, perÃ­odo=${periodoLabel}.`,
+      logs,
     });
   } catch (err) {
     console.error("[BOT] Erro ao registrar histÃ³rico (simulaÃ§Ã£o):", err);
@@ -1084,6 +1085,7 @@ async function runManualDownloadPortal(params = {}) {
 
   const arquivoIndexRef = { value: 0 };
   let teveErro = false;
+  let erroExecucao = "";
 
   try {
     // 1) Abrir login
@@ -1188,6 +1190,11 @@ async function runManualDownloadPortal(params = {}) {
     // âœ… AJUSTE MÃNIMO #2: se ainda estiver no Login, salva evidÃªncias e aborta (pra nÃ£o gerar ZIP vazio)
     if (isStillOnLogin()) {
       pushLog("[BOT] (Alerta) Ainda na tela de login. Vou salvar debug e abortar.");
+      let invalidCreds = false;
+      try {
+        const txt = await page.textContent("body").catch(() => "");
+        invalidCreds = /usu[aá]rio\s*e\/ou\s*senha\s*inv[aá]lidos?/i.test(String(txt || ""));
+      } catch {}
 
       try {
         const evidDir = path.join(rootJobDir, "_debug");
@@ -1204,6 +1211,9 @@ async function runManualDownloadPortal(params = {}) {
         pushLog(`[BOT] Debug salvo: ${html}`);
       } catch {}
 
+      if (!useA1 && invalidCreds) {
+        throw new Error("Usuário e/ou senha inválidos no portal NFS-e. Atualize as credenciais da empresa.");
+      }
       throw new Error(useA1 ? "NÃ£o autenticou com certificado A1 (permaneceu em /Login). Verifique PFX/senha e debug." : "NÃ£o autenticou no portal (permaneceu em /Login). Verifique o print/HTML em _debug.");
     } else {
       pushLog("[BOT] Login OK (URL mudou).");
@@ -1509,6 +1519,7 @@ async function runManualDownloadPortal(params = {}) {
     pushLog(`[BOT] Finalizado (${tipoNota}). Total capturado: ${arquivoIndexRef.value}.`);
   } catch (err) {
     console.error("Erro no robÃ´ Playwright:", err);
+    erroExecucao = err?.message || "Erro nÃ£o identificado";
     pushLog(`[BOT] ERRO: ${err.message}`);
     teveErro = true;
   } finally {
@@ -1526,8 +1537,11 @@ async function runManualDownloadPortal(params = {}) {
         tipo: modoExecucao || "manual",
         totalArquivos: arquivoIndexRef.value,
         status: teveErro ? "erro" : "sucesso",
-        erros: teveErro ? [{ message: "Verificar logs desta execuÃ§Ã£o" }] : null,
-        detalhes: `Portal nacional - tipoNota=${tipoNota}, perÃ­odo=${periodoLabel}.`,
+        erros: teveErro ? [{ message: erroExecucao || "Verificar logs desta execuÃ§Ã£o" }] : null,
+        detalhes: teveErro
+          ? `Portal nacional - tipoNota=${tipoNota}, perÃ­odo=${periodoLabel}. Erro: ${erroExecucao || "nÃ£o informado"}.`
+          : `Portal nacional - tipoNota=${tipoNota}, perÃ­odo=${periodoLabel}.`,
+        logs,
       });
     } catch (histErr) {
       console.error("[BOT] Erro ao registrar histÃ³rico:", histErr);
