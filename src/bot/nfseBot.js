@@ -1253,11 +1253,48 @@ async function runManualDownloadPortal(params = {}) {
       pushLog("[BOT] Login OK (URL mudou).");
     }
 
+    const ensureNotasAuthenticated = async () => {
+      const isOnLogin = () => /\/Login(\?|$)/i.test(page.url());
+      if (!isOnLogin()) return true;
+
+      pushLog("[BOT] Sessão voltou para /Login ao abrir Notas. Tentando reautenticar uma vez...");
+
+      if (useA1Active) {
+        const okA1 = await attemptA1();
+        if (!okA1 && hasCreds) {
+          await attemptLoginWithCreds();
+        }
+      } else if (hasCreds) {
+        await attemptLoginWithCreds();
+      }
+
+      return !isOnLogin();
+    };
+
     // 3) Navega para o tipo
     await navigateToTipo(page, tipoNota, pushLog);
+    if (/\/Login(\?|$)/i.test(page.url())) {
+      const reauthOk = await ensureNotasAuthenticated();
+      if (!reauthOk) {
+        throw new Error(
+          "Sessão expirada/não autenticada ao abrir Notas. Verifique credenciais/certificado da empresa."
+        );
+      }
+      await navigateToTipo(page, tipoNota, pushLog);
+      if (/\/Login(\?|$)/i.test(page.url())) {
+        throw new Error(
+          "Sessão redirecionada para Login ao abrir Notas. Portal rejeitou autenticação para esta empresa."
+        );
+      }
+    }
 
     // 4) Filtro de data
     const { usarFiltroNaTabela } = await applyDateFilterIfExists(page, dataInicial, dataFinal, pushLog);
+    if (/\/Login(\?|$)/i.test(page.url())) {
+      throw new Error(
+        "Sessão redirecionada para Login antes da leitura da tabela. Não foi possível capturar notas desta empresa."
+      );
+    }
 
     // âœ… SituaÃ§Ã£o/Status:
     // - canceladas: usado para INCLUIR somente canceladas

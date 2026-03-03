@@ -5171,8 +5171,16 @@
                 const falhas = Array.isArray(j.falhas) ? j.falhas : [];
                 const falhasTxt = falhas
                   .slice(0, 8)
-                  .map((f) => `${f?.empresa || "empresa"} (${f?.cnpj || "sem-cnpj"})`)
-                  .join(", ");
+                  .map((f) => {
+                    const motivos = Array.isArray(f?.motivos) ? f.motivos : [];
+                    const motivoTxt = motivos
+                      .slice(0, 2)
+                      .map((m) => `${m?.tipo || "falha"}: ${m?.motivo || "não informado"}`)
+                      .join(" | ");
+                    return `${f?.empresa || "empresa"} (${f?.cnpj || "sem-cnpj"})${motivoTxt ? ` — ${motivoTxt}` : ""}`;
+                  })
+                  .join("; ");
+                const resumo = j?.resumo || null;
                 return `
                   <div class="glass-strong rounded-xl2 p-5">
                     <div class="flex items-start justify-between gap-4">
@@ -5182,6 +5190,11 @@
                         }</p>
                         <p class="text-xs text-white/45 mt-1">${empresas || "-"}</p>
                         <p class="text-xs text-white/35 mt-2">Status: ${j.status || "-"}</p>
+                        ${
+                          resumo
+                            ? `<p class="text-xs text-white/45 mt-2">Notas capturadas de ${resumo.empresasComArquivos ?? 0} empresa(s) | com falha: ${resumo.empresasFalha ?? 0} | arquivos: ${resumo.totalArquivos ?? 0}</p>`
+                            : ""
+                        }
                         ${
                           falhas.length
                             ? `<p class="text-xs mt-2" style="color: rgba(239,68,68,.95);">Falha de acesso/captura em: ${falhasTxt}${
