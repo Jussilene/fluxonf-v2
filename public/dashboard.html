@@ -4785,6 +4785,10 @@
             }
             const falhasLote = Array.isArray(data?.resumo?.falhas) ? data.resumo.falhas : [];
             const hasFalhasLote = falhasLote.length > 0;
+            const falhasResumoTxt = falhasLote
+              .slice(0, 8)
+              .map((f) => `${f?.empresa || "empresa"} (${f?.cnpj || "sem-cnpj"})`)
+              .join(", ");
             const resumoMsg = hasFalhasLote
               ? `Captura em lote parcial: ${data?.resumo?.empresasComArquivos ?? 0} empresa(s) com arquivos e ${data?.resumo?.empresasFalha ?? falhasLote.length} com falha de acesso/captura.`
               : "";
@@ -4804,8 +4808,15 @@
                 falhas: falhasLote,
               },
             });
+            if (hasFalhasLote && hist[0]) {
+              hist[0].message = `${resumoMsg} Empresas com falha: ${falhasResumoTxt}${falhasLote.length > 8 ? ", ..." : ""}.`;
+            }
             saveList(KEY_HIST, hist);
             if (fila[0] && fila[0].id === jobId) fila[0].status = hasFalhasLote ? "parcial" : "concluida";
+            if (fila[0] && fila[0].id === jobId) {
+              fila[0].falhas = hasFalhasLote ? falhasLote : [];
+              fila[0].resumo = data?.resumo || null;
+            }
             saveList(KEY_FILA, fila);
             if (hasFalhasLote) {
               const lista = falhasLote
@@ -5157,6 +5168,11 @@
             ${fila
               .map((j, idx) => {
                 const empresas = (j.empresas || []).map((e) => e.nome).join(", ");
+                const falhas = Array.isArray(j.falhas) ? j.falhas : [];
+                const falhasTxt = falhas
+                  .slice(0, 8)
+                  .map((f) => `${f?.empresa || "empresa"} (${f?.cnpj || "sem-cnpj"})`)
+                  .join(", ");
                 return `
                   <div class="glass-strong rounded-xl2 p-5">
                     <div class="flex items-start justify-between gap-4">
@@ -5166,6 +5182,13 @@
                         }</p>
                         <p class="text-xs text-white/45 mt-1">${empresas || "-"}</p>
                         <p class="text-xs text-white/35 mt-2">Status: ${j.status || "-"}</p>
+                        ${
+                          falhas.length
+                            ? `<p class="text-xs mt-2" style="color: rgba(239,68,68,.95);">Falha de acesso/captura em: ${falhasTxt}${
+                                falhas.length > 8 ? ", ..." : ""
+                              }.</p>`
+                            : ""
+                        }
                       </div>
                       <div class="text-right">
                         <span class="text-xs text-white/45 block">${formatDateTimeIsoBr(j.createdAt, false)}</span>

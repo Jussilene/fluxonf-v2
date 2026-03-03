@@ -1654,52 +1654,76 @@ export async function runLoteDownload(empresas = [], options = {}) {
   };
 
   for (const emp of empresas) {
-    pushLog("--------------------------------------------------------------");
-    pushLog(`[BOT] Empresa: ${emp.nome} (CNPJ: ${emp.cnpj})`);
+    try {
+      pushLog("--------------------------------------------------------------");
+      pushLog(`[BOT] Empresa: ${emp.nome} (CNPJ: ${emp.cnpj})`);
 
-    const login = emp.loginPortal || emp.cnpj || null;
-    const senha = emp.senhaPortal || null;
-    const authType = String(emp.authType || "");
-    const isCert = authType.toLowerCase().includes("certificado");
-    const hasCreds = !!(login && senha);
-    const empFalhas = [];
-    let empArquivos = 0;
+      const login = emp.loginPortal || emp.cnpj || null;
+      const senha = emp.senhaPortal || null;
+      const authType = String(emp.authType || "");
+      const isCert = authType.toLowerCase().includes("certificado");
+      const hasCreds = !!(login && senha);
+      const empFalhas = [];
+      let empArquivos = 0;
 
-    if (usePortal && !hasCreds && !isCert) {
-      const motivo = "Login/senha da empresa nÃ£o configurados.";
-      pushLog(`[BOT] ${motivo} Pulando.`);
-      empFalhas.push({ tipo: "autenticacao", motivo });
-      resumo.empresasFalha += 1;
-      resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
-      continue;
-    }
+      if (usePortal && !hasCreds && !isCert) {
+        const motivo = "Login/senha da empresa nÃ£o configurados.";
+        pushLog(`[BOT] ${motivo} Pulando.`);
+        empFalhas.push({ tipo: "autenticacao", motivo });
+        resumo.empresasFalha += 1;
+        resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
+        continue;
+      }
 
-    // âœ… SÃ³ cria a pasta da empresa (nÃ£o cria Emitidas/Recebidas/Canceladas aqui)
-    const empresaDir = path.join(
-      loteJobPaths.jobDir,
-      `${String(emp.nome || "empresa").replace(/[^\w\-]+/g, "_")}_${String(
-        emp.cnpj || emp.id || ""
-      ).slice(-8)}`
-    );
-    ensureDir(empresaDir);
+      // âœ… SÃ³ cria a pasta da empresa (nÃ£o cria Emitidas/Recebidas/Canceladas aqui)
+      const empresaDir = path.join(
+        loteJobPaths.jobDir,
+        `${String(emp.nome || "empresa").replace(/[^\w\-]+/g, "_")}_${String(
+          emp.cnpj || emp.id || ""
+        ).slice(-8)}`
+      );
+      ensureDir(empresaDir);
 
-    for (const t of tipos) {
-      let result = null;
-      if (usePortal) {
-        try {
-          result = await runManualDownloadPortal({
+      for (const t of tipos) {
+        let result = null;
+        if (usePortal) {
+          try {
+            result = await runManualDownloadPortal({
+              dataInicial,
+              dataFinal,
+              tipoNota: t,
+              baixarXml,
+              baixarPdf,
+              pastaDestino,
+              login,
+              senha,
+              authType,
+              usarCertificadoA1: isCert,
+              certPfxPath: emp.certPfxPath || emp.pfxPath || null,
+              certPassphrase: emp.certPassphrase || emp.passphrase || null,
+              empresaId: emp.id || emp.cnpj,
+              empresaNome: emp.nome,
+              modoExecucao: "lote",
+              onLog: (msg) => pushLog(msg),
+              jobDir: empresaDir,
+
+              // âœ… AJUSTE: repassa usuÃ¡rio para histÃ³rico
+              usuarioEmail: usuarioEmail || null,
+              usuarioNome: usuarioNome || null,
+            });
+          } catch (e) {
+            const motivo = e?.message || "Erro inesperado ao executar captura.";
+            pushLog(`[BOT] ERRO geral em ${emp.nome} (${t}): ${motivo}`);
+            empFalhas.push({ tipo: t, motivo });
+          }
+        } else {
+          result = await runManualDownloadSimulado({
             dataInicial,
             dataFinal,
             tipoNota: t,
             baixarXml,
             baixarPdf,
             pastaDestino,
-            login,
-            senha,
-            authType,
-            usarCertificadoA1: isCert,
-            certPfxPath: emp.certPfxPath || emp.pfxPath || null,
-            certPassphrase: emp.certPassphrase || emp.passphrase || null,
             empresaId: emp.id || emp.cnpj,
             empresaNome: emp.nome,
             modoExecucao: "lote",
@@ -1710,51 +1734,39 @@ export async function runLoteDownload(empresas = [], options = {}) {
             usuarioEmail: usuarioEmail || null,
             usuarioNome: usuarioNome || null,
           });
-        } catch (e) {
-          const motivo = e?.message || "Erro inesperado ao executar captura.";
-          pushLog(`[BOT] ERRO geral em ${emp.nome} (${t}): ${motivo}`);
-          empFalhas.push({ tipo: t, motivo });
         }
+
+        if (result) {
+          empArquivos += Number(result?.totalArquivos || 0);
+          if (result?.ok === false) {
+            empFalhas.push({ tipo: t, motivo: result?.error || "Falha na captura." });
+          }
+        }
+
+        // Pequena pausa entre tipos/empresas para reduzir bloqueio do portal por muitas autenticações sequenciais.
+        await new Promise((r) => setTimeout(r, 500));
+      }
+
+      resumo.totalArquivos += empArquivos;
+      if (empArquivos > 0) resumo.empresasComArquivos += 1;
+      if (empFalhas.length > 0) {
+        resumo.empresasFalha += 1;
+        resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
+        const motivosTxt = empFalhas.map((f) => `${f.tipo}: ${f.motivo}`).join(" | ");
+        pushLog(`[BOT] [ERRO] ${emp.nome} (${emp.cnpj}): ${motivosTxt}`);
       } else {
-        result = await runManualDownloadSimulado({
-          dataInicial,
-          dataFinal,
-          tipoNota: t,
-          baixarXml,
-          baixarPdf,
-          pastaDestino,
-          empresaId: emp.id || emp.cnpj,
-          empresaNome: emp.nome,
-          modoExecucao: "lote",
-          onLog: (msg) => pushLog(msg),
-          jobDir: empresaDir,
-
-          // âœ… AJUSTE: repassa usuÃ¡rio para histÃ³rico
-          usuarioEmail: usuarioEmail || null,
-          usuarioNome: usuarioNome || null,
-        });
+        resumo.empresasOk += 1;
       }
-
-      if (result) {
-        empArquivos += Number(result?.totalArquivos || 0);
-        if (result?.ok === false) {
-          empFalhas.push({ tipo: t, motivo: result?.error || "Falha na captura." });
-        }
-      }
-
-      // Pequena pausa entre tipos/empresas para reduzir bloqueio do portal por muitas autenticações sequenciais.
-      await new Promise((r) => setTimeout(r, 500));
-    }
-
-    resumo.totalArquivos += empArquivos;
-    if (empArquivos > 0) resumo.empresasComArquivos += 1;
-    if (empFalhas.length > 0) {
+    } catch (fatalEmpErr) {
+      const motivo = fatalEmpErr?.message || "Falha inesperada ao processar empresa.";
+      pushLog(`[BOT] [ERRO] ${emp?.nome || "empresa"} (${emp?.cnpj || ""}): ${motivo}`);
       resumo.empresasFalha += 1;
-      resumo.falhas.push({ empresa: emp.nome || "", cnpj: emp.cnpj || "", motivos: empFalhas });
-      const motivosTxt = empFalhas.map((f) => `${f.tipo}: ${f.motivo}`).join(" | ");
-      pushLog(`[BOT] [ERRO] ${emp.nome} (${emp.cnpj}): ${motivosTxt}`);
-    } else {
-      resumo.empresasOk += 1;
+      resumo.falhas.push({
+        empresa: emp?.nome || "",
+        cnpj: emp?.cnpj || "",
+        motivos: [{ tipo: "fatal", motivo }],
+      });
+      continue;
     }
   }
 
