@@ -3652,7 +3652,7 @@
         function syncInstallBtnVisibility() {
           const ctx = getInstallContext();
           const activeView = window.__activeDashboardView || "view-dashboard";
-          const shouldShow = activeView === "view-dashboard" && ctx.isSecure && !ctx.isStandalone;
+          const shouldShow = activeView === "view-dashboard" && !ctx.isStandalone;
           btn.hidden = !shouldShow;
         }
 
