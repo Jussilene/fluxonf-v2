@@ -59,6 +59,15 @@ function writeDb(data) {
   }
 }
 
+function formatPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+}
+
 function normalizeEmpresaPayload(input = {}, base = {}) {
   const cnpjRaw = (input.cnpj ?? base.cnpj ?? "").toString();
   const cleanCnpj = cnpjRaw.replace(/\D/g, "");
@@ -81,7 +90,7 @@ function normalizeEmpresaPayload(input = {}, base = {}) {
     uf: (input.uf ?? base.uf ?? "").toString().trim(),
     cidade: (input.cidade ?? base.cidade ?? "").toString().trim(),
     endereco: (input.endereco ?? base.endereco ?? "").toString().trim(),
-    telefone: (input.telefone ?? base.telefone ?? "").toString().trim(),
+    telefone: formatPhoneNumber((input.telefone ?? base.telefone ?? "").toString().trim()),
     email: (input.email ?? base.email ?? "").toString().trim(),
     status: (input.status ?? base.status ?? "ATIVO").toString().trim().toUpperCase(),
     ativa: input.ativa ?? base.ativa ?? true,

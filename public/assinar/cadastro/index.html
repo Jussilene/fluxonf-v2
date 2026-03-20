@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <title>FluxoNF - Criar acesso</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#0b1220" />
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/assets/icon-192.png?v=20260226a" />
+    <link rel="icon" type="image/png" sizes="512x512" href="/assets/icon-512.png?v=20260226a" />
+    <link rel="apple-touch-icon" href="/assets/icon-192.png?v=20260226a" />
+    <link rel="shortcut icon" type="image/png" href="/assets/icon-192.png?v=20260226a" />
+
+    <script src="https://cdn.tailwindcss.com"></script>
+
+    <style>
+      body {
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background:
+          radial-gradient(980px 420px at 8% -10%, rgba(59, 130, 246, 0.1), transparent 55%),
+          radial-gradient(900px 460px at 88% 8%, rgba(16, 24, 40, 0.1), transparent 58%),
+          #f8fafc;
+      }
+
+      body.dark-mode {
+        background-color: #020617;
+        color: #e5e7eb;
+        background:
+          radial-gradient(980px 430px at 8% -10%, rgba(59, 130, 246, 0.18), transparent 60%),
+          radial-gradient(900px 440px at 90% 2%, rgba(109, 94, 247, 0.14), transparent 62%),
+          #020617;
+      }
+
+      .surface-card {
+        border-radius: 28px;
+        border: 1px solid #e2e8f0;
+        background: rgba(255, 255, 255, 0.94);
+        box-shadow: 0 18px 40px rgba(15, 23, 42, 0.1);
+      }
+
+      .surface-muted {
+        border: 1px solid #e2e8f0;
+        background: rgba(248, 250, 252, 0.9);
+      }
+
+      .brand-logo {
+        width: 56px;
+        height: 56px;
+        object-fit: contain;
+        border-radius: 12px;
+        border: 1px solid #dbe3ef;
+        background: #ffffff;
+        padding: 6px;
+        box-shadow: 0 6px 18px rgba(15, 23, 42, 0.08);
+      }
+
+      .password-toggle {
+        position: absolute;
+        right: 10px;
+        top: 50%;
+        transform: translateY(-50%);
+        width: 38px;
+        height: 38px;
+        border-radius: 12px;
+        border: 1px solid #e2e8f0;
+        background: #ffffff;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: background-color 0.2s ease, border-color 0.2s ease;
+      }
+
+      .password-toggle:hover {
+        background: #f8fafc;
+      }
+
+      body.dark-mode .surface-card {
+        background: rgba(2, 6, 23, 0.82) !important;
+        border-color: #1e293b !important;
+        box-shadow: 0 22px 44px rgba(0, 0, 0, 0.52) !important;
+      }
+
+      body.dark-mode .surface-muted {
+        background: rgba(15, 23, 42, 0.78) !important;
+        border-color: #1e293b !important;
+      }
+
+      body.dark-mode .text-slate-900,
+      body.dark-mode .text-slate-800,
+      body.dark-mode .text-slate-700 {
+        color: #f8fafc !important;
+      }
+
+      body.dark-mode .text-slate-600,
+      body.dark-mode .text-slate-500,
+      body.dark-mode .text-slate-400 {
+        color: #94a3b8 !important;
+      }
+
+      body.dark-mode .border-slate-100,
+      body.dark-mode .border-slate-200,
+      body.dark-mode .border-slate-300 {
+        border-color: #1e293b !important;
+      }
+
+      body.dark-mode input {
+        background: #020617 !important;
+        color: #f8fafc !important;
+        border-color: #334155 !important;
+      }
+
+      body.dark-mode input::placeholder {
+        color: #64748b !important;
+      }
+
+      body.dark-mode .bg-slate-900 {
+        background-color: #111827 !important;
+      }
+
+      body.dark-mode .hover\:bg-black:hover {
+        background-color: #020617 !important;
+      }
+
+      body.dark-mode .brand-logo {
+        background: #0b1220;
+        border-color: #1e293b;
+        box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
+      }
+
+      body.dark-mode .password-toggle {
+        background: #0f172a;
+        border-color: #334155;
+      }
+
+      body.dark-mode .password-toggle:hover {
+        background: #111827;
+      }
+    </style>
+  </head>
+
+  <body class="min-h-screen bg-slate-50">
+    <div class="min-h-screen px-4 py-6 sm:px-6 lg:px-8">
+      <div class="mx-auto flex min-h-screen max-w-3xl items-center justify-center">
+        <section class="surface-card w-full p-5 sm:p-7 lg:p-8">
+          <div class="mb-8 flex items-start justify-between gap-4">
+            <div class="flex min-w-0 items-start gap-3">
+              <img
+                src="/assets/fluxonf-logo.png?v=20260226a"
+                alt="Fluxo NF"
+                class="brand-logo shrink-0"
+                onerror="this.style.display='none';"
+              />
+              <div class="min-w-0 leading-tight">
+                <p class="text-xs uppercase tracking-[0.22em] text-slate-500">Fluxo NF</p>
+                <p class="mt-1 text-sm leading-7 text-slate-400">Cadastro seguro para clientes com acesso liberado pela Hotmart</p>
+              </div>
+            </div>
+
+            <button
+              id="themeToggleBtnRegister"
+              type="button"
+              aria-label="Alternar tema"
+              aria-checked="false"
+              role="switch"
+              class="relative inline-flex h-[34px] w-[74px] shrink-0 items-center rounded-full border border-slate-200 bg-white transition-colors hover:bg-slate-50"
+            >
+              <span class="absolute inset-0 flex items-center justify-between px-2">
+                <span id="themeSunIconRegister" class="text-slate-700">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M12 18a6 6 0 1 0 0-12 6 6 0 0 0 0 12Z" stroke="currentColor" stroke-width="2" />
+                    <path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5 19 19M19 5l-1.5 1.5M6.5 17.5 5 19" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                  </svg>
+                </span>
+                <span id="themeMoonIconRegister" class="text-slate-400">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+                    <path d="M21 14.5A8.5 8.5 0 0 1 9.5 3a7 7 0 1 0 11.5 11.5Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                  </svg>
+                </span>
+              </span>
+              <span
+                id="themeToggleKnobRegister"
+                class="absolute left-[3px] top-[3px] h-[28px] w-[28px] rounded-full border border-slate-200 bg-white shadow-sm transition-transform"
+              ></span>
+            </button>
+          </div>
+
+          <div class="mb-6">
+            <span class="inline-flex rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-500">Acesso FluxoNF</span>
+            <h2 class="mt-5 text-3xl font-semibold leading-tight text-slate-900 sm:text-4xl">Cadastre seus dados para acessar sua conta com segurança</h2>
+            <p class="mt-3 text-sm leading-6 text-slate-500 sm:text-base">Preencha as informações abaixo para criar seu login no FluxoNF.</p>
+          </div>
+
+          <div id="registerFeedback" class="hidden mb-4 rounded-2xl border px-4 py-3 text-sm"></div>
+
+          <form id="registerForm" class="space-y-4">
+            <div class="grid gap-4 sm:grid-cols-2">
+              <div class="sm:col-span-2">
+                <label for="companyName" class="block text-sm font-medium text-slate-700">Razão social</label>
+                <input
+                  id="companyName"
+                  name="company_name"
+                  type="text"
+                  required
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="Digite a razão social"
+                  autocomplete="organization"
+                />
+              </div>
+
+              <div>
+                <label for="name" class="block text-sm font-medium text-slate-700">Nome</label>
+                <input
+                  id="name"
+                  name="name"
+                  type="text"
+                  required
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="Digite seu nome"
+                  autocomplete="name"
+                />
+              </div>
+
+              <div>
+                <label for="cnpj" class="block text-sm font-medium text-slate-700">CNPJ</label>
+                <input
+                  id="cnpj"
+                  name="cnpj"
+                  type="text"
+                  required
+                  maxlength="18"
+                  inputmode="numeric"
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="00.000.000/0000-00"
+                  autocomplete="off"
+                />
+              </div>
+
+              <div>
+                <label for="responsible" class="block text-sm font-medium text-slate-700">Responsável</label>
+                <input
+                  id="responsible"
+                  name="responsible"
+                  type="text"
+                  required
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="Nome do responsável"
+                  autocomplete="name"
+                />
+              </div>
+
+              <div>
+                <label for="signedAt" class="block text-sm font-medium text-slate-700">Data da contratação</label>
+                <input
+                  id="signedAt"
+                  name="signedAt"
+                  type="text"
+                  required
+                  readonly
+                  class="mt-2 w-full rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-3 text-sm text-slate-600 focus:outline-none"
+                />
+              </div>
+
+              <div>
+                <label for="email" class="block text-sm font-medium text-slate-700">E-mail</label>
+                <input
+                  id="email"
+                  name="email"
+                  type="email"
+                  required
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="ex: voce@empresa.com.br"
+                  autocomplete="email"
+                />
+              </div>
+
+              <div>
+                <label for="whatsapp" class="block text-sm font-medium text-slate-700">WhatsApp (DDD + número)</label>
+                <input
+                  id="whatsapp"
+                  name="whatsapp"
+                  type="tel"
+                  required
+                  maxlength="15"
+                  inputmode="numeric"
+                  class="mt-2 w-full rounded-xl border border-slate-200 px-3.5 py-3 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                  placeholder="(11) 11111-1111"
+                  autocomplete="tel"
+                />
+              </div>
+
+              <div>
+                <label for="password" class="block text-sm font-medium text-slate-700">Senha</label>
+                <div class="relative mt-2">
+                  <input
+                    id="password"
+                    name="password"
+                    type="password"
+                    required
+                    minlength="6"
+                    class="w-full rounded-xl border border-slate-200 px-3.5 py-3 pr-12 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="Crie uma senha segura"
+                    autocomplete="new-password"
+                  />
+                  <button id="togglePasswordBtn" type="button" class="password-toggle" aria-label="Mostrar senha" title="Mostrar senha">
+                    <span id="eyeClosedIconPassword" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        <path d="M10.58 10.58a3 3 0 0 0 4.24 4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        <path d="M9.88 5.09A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a18.44 18.44 0 0 1-3.02 4.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M6.61 6.61A18.65 18.65 0 0 0 2 12s3 7 10 7a10.52 10.52 0 0 0 3.39-.55" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                    <span id="eyeOpenIconPassword" class="hidden" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="2" />
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label for="confirmPassword" class="block text-sm font-medium text-slate-700">Confirmar senha</label>
+                <div class="relative mt-2">
+                  <input
+                    id="confirmPassword"
+                    name="confirmPassword"
+                    type="password"
+                    required
+                    minlength="6"
+                    class="w-full rounded-xl border border-slate-200 px-3.5 py-3 pr-12 text-sm focus:border-slate-900 focus:outline-none focus:ring-2 focus:ring-slate-900"
+                    placeholder="Repita a senha"
+                    autocomplete="new-password"
+                  />
+                  <button id="toggleConfirmPasswordBtn" type="button" class="password-toggle" aria-label="Mostrar confirmação de senha" title="Mostrar confirmação de senha">
+                    <span id="eyeClosedIconConfirm" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M3 3l18 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        <path d="M10.58 10.58a3 3 0 0 0 4.24 4.24" stroke="currentColor" stroke-width="2" stroke-linecap="round" />
+                        <path d="M9.88 5.09A10.43 10.43 0 0 1 12 5c7 0 10 7 10 7a18.44 18.44 0 0 1-3.02 4.25" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                        <path d="M6.61 6.61A18.65 18.65 0 0 0 2 12s3 7 10 7a10.52 10.52 0 0 0 3.39-.55" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+                      </svg>
+                    </span>
+                    <span id="eyeOpenIconConfirm" class="hidden" aria-hidden="true">
+                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
+                        <path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7S2 12 2 12Z" stroke="currentColor" stroke-width="2" stroke-linejoin="round" />
+                        <path d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" stroke="currentColor" stroke-width="2" />
+                      </svg>
+                    </span>
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <div class="surface-muted rounded-2xl px-4 py-3">
+              <p class="text-xs leading-5 text-slate-500">Ao concluir, seu acesso ficará salvo na base existente do sistema e você poderá entrar pelo login padrão do FluxoNF.</p>
+            </div>
+
+            <button
+              id="registerSubmitBtn"
+              type="submit"
+              class="inline-flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-5 py-3 text-base font-semibold text-white transition-colors hover:bg-black focus:outline-none focus:ring-2 focus:ring-slate-900 focus:ring-offset-2 focus:ring-offset-slate-50"
+            >
+              Criar meu acesso
+            </button>
+          </form>
+
+          <div class="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+            <p class="text-sm text-slate-500">Já tenho acesso ao sistema.</p>
+            <a
+              href="/index.html"
+              class="inline-flex items-center justify-center rounded-xl border border-slate-200 px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+            >
+              Já tenho acesso / Entrar
+            </a>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <script>
+      (function () {
+        const toggles = [
+          {
+            btn: document.getElementById("themeToggleBtnRegister"),
+            knob: document.getElementById("themeToggleKnobRegister"),
+            sun: document.getElementById("themeSunIconRegister"),
+            moon: document.getElementById("themeMoonIconRegister"),
+          },
+        ];
+
+        function applyUI(isDark) {
+          document.body.classList.toggle("dark-mode", isDark);
+          localStorage.setItem("nfseTheme", isDark ? "dark" : "light");
+
+          toggles.forEach(({ btn, knob, sun, moon }) => {
+            if (btn) btn.setAttribute("aria-checked", String(isDark));
+            if (knob) {
+              knob.classList.toggle("translate-x-[40px]", isDark);
+              knob.classList.toggle("bg-slate-900", isDark);
+              knob.classList.toggle("border-slate-700", isDark);
+              knob.classList.toggle("bg-white", !isDark);
+              knob.classList.toggle("border-slate-200", !isDark);
+            }
+            if (sun) {
+              sun.classList.toggle("text-slate-700", !isDark);
+              sun.classList.toggle("text-slate-400", isDark);
+            }
+            if (moon) {
+              moon.classList.toggle("text-slate-400", !isDark);
+              moon.classList.toggle("text-slate-200", isDark);
+            }
+          });
+        }
+
+        const savedTheme = localStorage.getItem("nfseTheme") || "light";
+        applyUI(savedTheme === "dark");
+
+        toggles.forEach(({ btn }) => {
+          if (!btn) return;
+          btn.addEventListener("click", () => {
+            const willBeDark = !document.body.classList.contains("dark-mode");
+            applyUI(willBeDark);
+          });
+        });
+      })();
+    </script>
+
+    <script src="/js/register-access.js"></script>
+  </body>
+</html>

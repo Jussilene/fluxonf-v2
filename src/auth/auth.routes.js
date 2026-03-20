@@ -7,6 +7,40 @@ import { requireAuth } from "./auth.middleware.js";
 
 const router = express.Router();
 
+function resolveRegistrationOwnerAdminId() {
+  const preferredAdminEmail = "jvr.solucoes8@gmail.com";
+  const preferredAdmin = db
+    .prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) AND upper(trim(role)) = 'ADMIN' LIMIT 1`)
+    .get(preferredAdminEmail);
+
+  if (preferredAdmin?.id) return Number(preferredAdmin.id);
+
+  const fallbackAdmin = db
+    .prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`)
+    .get();
+
+  return Number(fallbackAdmin?.id || 0) || null;
+}
+
+function formatPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+}
+
+function formatCnpj(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 14);
+  if (!digits) return "";
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+}
+
 function normalizePlanForResponse(plan, planValue, role = "") {
   if (String(role || "").trim().toUpperCase() === "ADMIN") {
     return { plan: null, plan_value: null };
@@ -90,6 +124,110 @@ router.post("/login", async (req, res) => {
       plan_value: normalizedPlan.plan_value,
       created_at: user.created_at || null,
     },
+  });
+});
+
+// POST /auth/register-access
+router.post("/register-access", async (req, res) => {
+  const {
+    company_name,
+    cnpj,
+    name,
+    responsible,
+    email,
+    whatsapp,
+    password,
+    confirmPassword,
+  } = req.body || {};
+
+  const normalizedCompanyName = String(company_name || "").trim();
+  const normalizedCnpj = formatCnpj(cnpj);
+  const normalizedName = String(name || "").trim();
+  const normalizedResponsible = String(responsible || "").trim();
+  const normalizedEmail = String(email || "").trim().toLowerCase();
+  const normalizedWhatsapp = formatPhoneNumber(whatsapp);
+  const normalizedPassword = String(password || "");
+  const normalizedConfirmPassword = String(confirmPassword || "");
+
+  const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+  if (!normalizedCompanyName || !normalizedCnpj || !normalizedName || !normalizedEmail || !normalizedWhatsapp || !normalizedPassword || !normalizedConfirmPassword) {
+    return res.status(400).json({ ok: false, error: "Preencha razão social, CNPJ, nome, e-mail, celular, senha e confirmação." });
+  }
+
+  if (!emailRegex.test(normalizedEmail)) {
+    return res.status(400).json({ ok: false, error: "Informe um e-mail válido." });
+  }
+
+  if (String(normalizedCnpj || "").replace(/\D/g, "").length !== 14) {
+    return res.status(400).json({ ok: false, error: "Informe um CNPJ válido." });
+  }
+
+  if (normalizedPassword.length < 6) {
+    return res.status(400).json({ ok: false, error: "A senha deve ter pelo menos 6 caracteres." });
+  }
+
+  if (normalizedPassword !== normalizedConfirmPassword) {
+    return res.status(400).json({ ok: false, error: "A confirmação de senha não confere." });
+  }
+
+  const existingUser = db.prepare(`SELECT id FROM users WHERE email = ?`).get(normalizedEmail);
+  if (existingUser) {
+    return res.status(409).json({ ok: false, error: "Já existe um cadastro com este e-mail." });
+  }
+
+  const ownerAdminId = resolveRegistrationOwnerAdminId();
+  if (!ownerAdminId) {
+    return res.status(500).json({ ok: false, error: "Não foi possível identificar o administrador responsável." });
+  }
+
+  const passwordHash = await hashPassword(normalizedPassword);
+  const createdAt = new Date().toISOString();
+
+  const info = db.prepare(`
+    INSERT INTO users (
+      name,
+      email,
+      password_hash,
+      password_plain,
+      role,
+      is_active,
+      company_name,
+      cnpj,
+      whatsapp,
+      plan,
+      plan_value,
+      created_at,
+      owner_admin_id
+    )
+    VALUES (?, ?, ?, ?, 'USER', 1, ?, ?, ?, 'STARTER', 49.9, ?, ?)
+  `).run(
+    normalizedResponsible || normalizedName,
+    normalizedEmail,
+    passwordHash,
+    normalizedPassword,
+    normalizedCompanyName,
+    normalizedCnpj,
+    normalizedWhatsapp,
+    createdAt,
+    ownerAdminId
+  );
+
+  return res.status(201).json({
+    ok: true,
+    user: {
+      id: info.lastInsertRowid,
+      name: normalizedResponsible || normalizedName,
+      email: normalizedEmail,
+      company_name: normalizedCompanyName,
+      cnpj: normalizedCnpj,
+      whatsapp: normalizedWhatsapp,
+      role: "USER",
+      plan: "STARTER",
+      owner_admin_id: ownerAdminId,
+    },
+    redirectTo: "/index.html",
+    message: "Cadastro concluído com sucesso. Faça seu login para acessar o FluxoNF.",
   });
 });
 

@@ -98,6 +98,10 @@ app.use("/webhooks", hotmartWebhookRoutes);
 // - registra /auth/forgot-password e /auth/reset-password
 app.use("/auth", passwordResetRoutes);
 
+app.get("/assinar/cadastro", (_req, res) => {
+  res.sendFile(path.join(__dirname, "..", "public", "assinar", "cadastro", "index.html"));
+});
+
 // ---------------------------
 // Pasta pública de ZIPs
 // ---------------------------

@@ -132,7 +132,7 @@ export async function findUserByEmail(email) {
  *
  * OBS: senha padrão pode vir por parâmetro, ou via env HOTMART_DEFAULT_PASSWORD.
  */
-export async function createUser({ email, name = "", role = "user", password = "" } = {}) {
+export async function createUser({ email, name = "", role = "user", password = "", plan = "STARTER", planValue = 49.9 } = {}) {
   const e = String(email || "").trim().toLowerCase();
   if (!e) return null;
 
@@ -158,12 +158,15 @@ export async function createUser({ email, name = "", role = "user", password = "
       db.prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`).get();
     const ownerAdminId = Number(rootAdmin?.id || 0) || null;
 
+    const normalizedPlan = String(plan || "STARTER").trim().toUpperCase() || "STARTER";
+    const normalizedPlanValue = Number(planValue || 49.9) || 49.9;
+
     const info = db
       .prepare(
-        `INSERT INTO users (name, email, role, is_active, password_hash, password_plain, created_at, owner_admin_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+        `INSERT INTO users (name, email, role, is_active, password_hash, password_plain, created_at, owner_admin_id, plan, plan_value)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
       )
-      .run(finalName, e, role, 1, password_hash, pw, new Date().toISOString(), ownerAdminId);
+      .run(finalName, e, role, 1, password_hash, pw, new Date().toISOString(), ownerAdminId, normalizedPlan, normalizedPlanValue);
 
     return {
       id: info.lastInsertRowid,

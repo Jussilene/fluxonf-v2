@@ -23,6 +23,25 @@ function normalizePlan(input) {
   return { plan: "ESSENCIAL", plan_value: 49.9 };
 }
 
+function formatPhoneNumber(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 11);
+  if (!digits) return "";
+  if (digits.length <= 2) return `(${digits}`;
+  if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+  if (digits.length <= 10) return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+  return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7, 11)}`;
+}
+
+function formatCnpj(value) {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 14);
+  if (!digits) return "";
+  if (digits.length <= 2) return digits;
+  if (digits.length <= 5) return `${digits.slice(0, 2)}.${digits.slice(2)}`;
+  if (digits.length <= 8) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5)}`;
+  if (digits.length <= 12) return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8)}`;
+  return `${digits.slice(0, 2)}.${digits.slice(2, 5)}.${digits.slice(5, 8)}/${digits.slice(8, 12)}-${digits.slice(12, 14)}`;
+}
+
 function adminScopeId(req) {
   const scope = Number(req.user?.id);
   return Number.isFinite(scope) ? scope : null;
@@ -63,8 +82,8 @@ router.post("/users", async (req, res) => {
   const p = String(password || "");
   const r = String(role || "USER").toUpperCase();
   const company = String(company_name || "").trim();
-  const cnpjValue = String(cnpj || "").trim();
-  const whatsappValue = String(whatsapp || "").trim();
+  const cnpjValue = formatCnpj(cnpj);
+  const whatsappValue = formatPhoneNumber(whatsapp);
   const normalizedPlan = normalizePlan(plan);
 
   if (!n || !e || !p || !company || !cnpjValue || !whatsappValue || !plan || !r) {
@@ -127,8 +146,8 @@ router.put("/users/:id", (req, res) => {
   }
 
   const company = company_name === undefined ? String(u.company_name || "") : String(company_name || "").trim();
-  const cnpjValue = cnpj === undefined ? String(u.cnpj || "") : String(cnpj || "").trim();
-  const whatsappValue = whatsapp === undefined ? String(u.whatsapp || "") : String(whatsapp || "").trim();
+  const cnpjValue = cnpj === undefined ? formatCnpj(u.cnpj || "") : formatCnpj(cnpj);
+  const whatsappValue = whatsapp === undefined ? formatPhoneNumber(u.whatsapp || "") : formatPhoneNumber(whatsapp);
   const normalizedPlan = normalizePlan(plan === undefined ? u.plan : plan);
   const nextOwnerAdminId = Number(u.owner_admin_id || scopeId);
 

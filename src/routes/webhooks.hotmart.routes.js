@@ -172,6 +172,8 @@ router.post("/webhooks/hotmart", async (req, res) => {
         email,
         passwordHash,
         role: "user", // ✅ GARANTE: NÃO ADM
+        plan: "STARTER",
+        planValue: 49.9,
       });
 
       console.log("✅ Usuário criado (role=user):", email);
