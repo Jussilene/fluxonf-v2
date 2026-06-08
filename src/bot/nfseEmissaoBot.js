@@ -32,8 +32,13 @@ function ensureDirForFile(fp) {
 }
 
 function envHeadless() {
-  const v = String(process.env.NFS_HEADLESS ?? "1").trim();
+  const v = String(process.env.NFSE_HEADLESS ?? process.env.NFS_HEADLESS ?? "1").trim();
   return !(v === "0" || v.toLowerCase() === "false");
+}
+
+function envInt(name, defaultValue) {
+  const raw = String(process.env[name] ?? "").trim();
+  return /^\d+$/.test(raw) ? Number(raw) : defaultValue;
 }
 
 async function saveDebug(page, prefix) {
@@ -143,6 +148,83 @@ async function clickAvancar(page) {
     return true;
   }
   return false;
+}
+
+async function bringPortalToFront(page) {
+  try {
+    const session = await page.context().newCDPSession(page);
+    const { windowId } = await session.send("Browser.getWindowForTarget");
+    await session.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "normal" } }).catch(() => {});
+    await session.send("Browser.setWindowBounds", { windowId, bounds: { windowState: "maximized" } }).catch(() => {});
+  } catch {}
+
+  await page.bringToFront().catch(() => {});
+  await page.evaluate(() => window.focus()).catch(() => {});
+  await page.waitForTimeout(300).catch(() => {});
+}
+
+async function isHumanValidationVisible(page) {
+  try {
+    const byText = await page
+      .locator("text=/VALIDA..O DE USU.RIO|Sou humano|hCaptcha|HCaptcha|Confirmar|captcha/i")
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+    if (byText) return true;
+
+    const byFrame = await page
+      .locator('iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[title*="captcha" i]')
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+
+    return !!byFrame;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForHumanValidationToFinish(page, onLog, contextLabel = "login") {
+  if (!(await isHumanValidationVisible(page))) return false;
+
+  await bringPortalToFront(page);
+
+  const timeoutMs = envInt("NFSE_CAPTCHA_TIMEOUT_MS", 300000);
+  onLog(
+    `Validação humana detectada (${contextLabel}). Resolva o CAPTCHA na janela aberta e clique em Confirmar. Vou aguardar até ${Math.round(
+      timeoutMs / 1000
+    )}s.`
+  );
+
+  const solved = await page
+    .waitForFunction(
+      () => {
+        const bodyText = document.body ? document.body.innerText || "" : "";
+        const stillHasText = /VALIDA..O DE USU.RIO|Sou humano|hCaptcha|HCaptcha|Confirmar|captcha/i.test(bodyText);
+        const hasCaptchaFrame = !!document.querySelector(
+          'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[title*="captcha" i]'
+        );
+        const visibleDialog = Array.from(document.querySelectorAll(".modal, .modal-dialog, [role='dialog']")).some(
+          (el) => {
+            const rect = el.getBoundingClientRect();
+            const style = window.getComputedStyle(el);
+            return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+          }
+        );
+        return !stillHasText && !hasCaptchaFrame && !visibleDialog;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  onLog(
+    solved
+      ? `Validação humana concluída (${contextLabel}). Continuando...`
+      : `Tempo de espera do CAPTCHA esgotado (${contextLabel}).`
+  );
+  return solved;
 }
 
 /**
@@ -289,7 +371,11 @@ export async function iniciarSessaoGovBr({ usuarioEmail, empresaId, onLog = () =
   }
 
   onLog("Abrindo navegador (login assistido gov.br)...");
-  const browser = await chromium.launch({ headless: false, slowMo: 120 });
+  const browser = await chromium.launch({
+    headless: false,
+    slowMo: 120,
+    args: ["--start-maximized", "--window-size=1280,900"],
+  });
   const context = await browser.newContext();
   const page = await context.newPage();
 
@@ -298,11 +384,17 @@ export async function iniciarSessaoGovBr({ usuarioEmail, empresaId, onLog = () =
   onLog("Faça login manualmente (captcha/2FA se pedir).");
   onLog("Quando entrar no Emissor Nacional, vou salvar a sessão.");
 
-  const deadline = Date.now() + 6 * 60 * 1000;
+  await bringPortalToFront(page);
+
+  const deadline = Date.now() + envInt("NFSE_ASSISTED_LOGIN_TIMEOUT_MS", 6 * 60 * 1000);
   let logged = false;
 
   while (Date.now() < deadline && !logged) {
     logged = await isLoggedIn(page);
+    if (!logged && (await isHumanValidationVisible(page))) {
+      await waitForHumanValidationToFinish(page, onLog, "login assistido");
+      logged = await isLoggedIn(page);
+    }
     if (!logged) await page.waitForTimeout(800);
   }
 
@@ -355,7 +447,7 @@ async function tentarLoginAutomatico(
   await passSel.fill(String(senhaPortal)).catch(() => {});
   await clickByText(page, "Entrar").catch(() => {});
 
-  const deadline = Date.now() + 45 * 1000;
+  const deadline = Date.now() + envInt("NFSE_AUTO_LOGIN_TIMEOUT_MS", 45 * 1000);
   while (Date.now() < deadline) {
     if (await isLoggedIn(page)) {
       onLog("Login automático realizado com sucesso.");
@@ -366,6 +458,19 @@ async function tentarLoginAutomatico(
       }
       return { ok: true };
     }
+    if (await isHumanValidationVisible(page)) {
+      const solved = await waitForHumanValidationToFinish(page, onLog, "login");
+      if (solved && (await isLoggedIn(page))) {
+        onLog("Login concluído após validação humana.");
+        if (salvarSessaoAuto && context && statePath) {
+          ensureDirForFile(statePath);
+          await context.storageState({ path: statePath });
+          onLog("Sessão salva automaticamente (storageState).");
+        }
+        return { ok: true };
+      }
+    }
+
     await page.waitForTimeout(900);
   }
 
@@ -432,6 +537,7 @@ export async function emitirNfseNoPortal(payload, { onLog = () => {} } = {}) {
     headless: resolvedHeadless,
     // ✅ mais rápido (ainda dá pra acompanhar)
     slowMo: resolvedHeadless ? 0 : 80,
+    args: resolvedHeadless ? [] : ["--start-maximized", "--window-size=1280,900"],
   });
 
   const context = await browser.newContext(hasState ? { storageState: statePath } : {});

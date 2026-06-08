@@ -117,10 +117,14 @@ export function ensureSeedAdmins({ bcryptHashFn }) {
     VALUES (?, ?, ?, ?, ?, 1, ?, NULL)
   `);
 
-  const admins = [
-    { name: "Ronaldo", email: "Ronaldo@brasilprice.com.br", role: "ADMIN" },
-    { name: "Ju", email: "jussilene.valim@gmail.com", role: "ADMIN" },
-  ];
+  const admins = (() => {
+    try {
+      const parsed = JSON.parse(String(process.env.AUTH_SEED_ADMINS || "[]"));
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  })();
 
   const created = [];
 
@@ -128,6 +132,7 @@ export function ensureSeedAdmins({ bcryptHashFn }) {
     const exists = getByEmail.get(a.email);
     if (!exists) {
       const tempPass =
+        String(a.password || "").trim() ||
         (process.env.AUTH_SEED_TEMP_PASSWORD || "").trim() ||
         `Tmp@${Math.random().toString(36).slice(2, 8)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -222,8 +227,11 @@ try {
 // - Usuários sem owner_admin_id herdam o admin raiz (JVR) ou o primeiro admin existente
 try {
   db.prepare(`UPDATE users SET owner_admin_id = id WHERE upper(trim(role)) = 'ADMIN' AND owner_admin_id IS NULL`).run();
+  const preferredAdminEmail = String(process.env.AUTH_PREFERRED_ADMIN_EMAIL || "").trim().toLowerCase();
   const rootAdmin =
-    db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get("jussilene.valim@gmail.com") ||
+    (preferredAdminEmail
+      ? db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get(preferredAdminEmail)
+      : null) ||
     db.prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`).get();
   if (rootAdmin?.id) {
     db.prepare(`

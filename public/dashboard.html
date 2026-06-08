@@ -5315,6 +5315,8 @@
           }
 
           const invalidAuthEmp = empresas.find((e) => {
+            const authType = String(e?.authType || "Login e Senha");
+            const isCert = authType.toLowerCase().includes("certificado");
             const login = String(e?.portalLogin || e?.loginPortal || "").trim();
             const senha = String(e?.portalSenha || e?.senhaPortal || "").trim();
             const certPath = String(e?.certPfxPath || e?.pfxPath || e?.certFile || "").trim();
@@ -5322,7 +5324,7 @@
             const looksLikeServerPath = /[\\/]/.test(certPath);
             const hasLoginCreds = !!(login && senha);
             const hasCertCreds = !!(certPath && looksLikeServerPath && certPass);
-            return !hasLoginCreds && !hasCertCreds;
+            return isCert ? !hasCertCreds : !hasLoginCreds;
           });
           if (invalidAuthEmp) {
             alert(`A empresa "${invalidAuthEmp.nome || invalidAuthEmp.cnpj || "selecionada"}" não possui credenciais válidas (Login/Senha ou Certificado A1 + senha).`);
@@ -5398,18 +5400,23 @@
                   baixarXml,
                   baixarPdf,
                   pastaDestino: "downloads",
-                  empresas: empresas.map((e) => ({
-                    id: e.id, nome: e.nome, cnpj: e.cnpj,
-                    loginPortal: e.portalLogin || e.loginPortal || "",
-                    senhaPortal: e.portalSenha || e.senhaPortal || "",
-                    authType: e.authType || "Login e Senha",
-                    certPfxPath: e.certPfxPath || e.pfxPath || e.certFile || null,
-                    certPassphrase: e.certPassphrase || e.certPfxPassphrase || e.passphrase || e.certPass || null,
-                  })),
+                  empresas: empresas.map((e) => {
+                    const authType = e.authType || "Login e Senha";
+                    const isCert = String(authType).toLowerCase().includes("certificado");
+                    return {
+                      id: e.id, nome: e.nome, cnpj: e.cnpj,
+                      loginPortal: e.portalLogin || e.loginPortal || "",
+                      senhaPortal: e.portalSenha || e.senhaPortal || "",
+                      authType,
+                      usarCertificadoA1: isCert,
+                      certPfxPath: isCert ? e.certPfxPath || e.pfxPath || e.certFile || null : null,
+                      certPassphrase: isCert ? e.certPassphrase || e.certPfxPassphrase || e.passphrase || e.certPass || null : null,
+                    };
+                  }),
                 }),
               });
               data = await res.json().catch(() => ({}));
-              if (!res.ok || !data?.success) throw new Error(data?.error || `Falha no lote (${res.status})`);
+              if (!res.ok || !data?.success) throw new Error(data?.detail || data?.error || `Falha no lote (${res.status})`);
             }
 
             if (data?.downloadZipUrl) {
@@ -5571,9 +5578,9 @@
         const certPassphrase = emp.certPassphrase || emp.certPfxPassphrase || emp.passphrase || emp.certPass || null;
         const hasLoginCreds = !!(login && senha);
         const hasCertCreds = !!(certPfxPath && certPassphrase);
-        const isCert = hasCertCreds;
+        const isCert = authType.toLowerCase().includes("certificado");
 
-        if (!hasLoginCreds && !hasCertCreds) {
+        if (!hasLoginCreds && !(isCert && hasCertCreds)) {
           throw new Error("Empresa sem credenciais válidas. Informe Login/Senha ou Certificado A1 + senha.");
         }
 
@@ -5586,16 +5593,16 @@
           baixarXml: formatos.baixarXml,
           baixarPdf: formatos.baixarPdf,
           pastaDestino: "downloads",
-          login,
-          senha,
+          login: isCert ? "" : login,
+          senha: isCert ? "" : senha,
           empresaId: emp.id,
           empresaNome: emp.nome || "",
           empresaCnpj: emp.cnpj || "",
           usuarioEmail: currentUser?.email || "",
           authType,
-          usarCertificadoA1: hasCertCreds,
-          certPfxPath,
-          certPassphrase,
+          usarCertificadoA1: isCert,
+          certPfxPath: isCert ? certPfxPath : "",
+          certPassphrase: isCert ? certPassphrase : "",
         };
 
         const res = await fetch("/api/nf/manual", {
@@ -5607,7 +5614,7 @@
 
         const data = await res.json().catch(() => ({}));
         if (!res.ok || !data?.success) {
-          throw new Error(data?.error || `Falha na captura (${res.status})`);
+          throw new Error(data?.detail || data?.error || `Falha na captura (${res.status})`);
         }
 
         return data;

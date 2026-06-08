@@ -12,6 +12,21 @@ const ROOT = process.cwd();
 const DATA_DIR = path.join(ROOT, "data");
 const USERS_FILE = path.join(DATA_DIR, "users.json");
 
+function randomPassword() {
+  return `Tmp@${crypto.randomBytes(9).toString("base64url")}`;
+}
+
+function resolveRootAdminId() {
+  const preferredAdminEmail = String(process.env.AUTH_PREFERRED_ADMIN_EMAIL || "").trim().toLowerCase();
+  if (preferredAdminEmail) {
+    const preferredAdmin = db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get(preferredAdminEmail);
+    if (preferredAdmin?.id) return Number(preferredAdmin.id);
+  }
+
+  const firstAdmin = db.prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`).get();
+  return Number(firstAdmin?.id || 0) || null;
+}
+
 // =========================================================
 // 1) Tenta usar um "store" de usuários existente no projeto
 //    (pra não quebrar seu login / hash atual).
@@ -139,7 +154,7 @@ export async function createUser({ email, name = "", role = "user", password = "
   const pw =
     String(password || "").trim() ||
     String(process.env.HOTMART_DEFAULT_PASSWORD || "").trim() ||
-    "123456";
+    randomPassword();
 
   // ✅ 1) SQLite (preferencial)
   try {
@@ -153,10 +168,7 @@ export async function createUser({ email, name = "", role = "user", password = "
 
     const finalName = String(name || "").trim() || "Cliente Hotmart";
 
-    const rootAdmin =
-      db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get("jussilene.valim@gmail.com") ||
-      db.prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`).get();
-    const ownerAdminId = Number(rootAdmin?.id || 0) || null;
+    const ownerAdminId = resolveRootAdminId();
 
     const normalizedPlan = String(plan || "STARTER").trim().toUpperCase() || "STARTER";
     const normalizedPlanValue = Number(planValue || 49.9) || 49.9;

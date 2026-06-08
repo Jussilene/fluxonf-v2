@@ -1,9 +1,26 @@
 // src/auth/seedAdmins.js
+import "dotenv/config";
 import db from "../db/sqlite.js";
 import { hashPassword } from "./password.js";
 
+function parseSeedAdmins() {
+  const raw = String(process.env.AUTH_SEED_ADMINS || "").trim();
+  if (!raw) return [];
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    console.error("[seed] AUTH_SEED_ADMINS inválido. Use JSON array.", err?.message || err);
+    return [];
+  }
+}
+
 async function ensureAdmin({ name, email, password }) {
   const e = String(email).trim().toLowerCase();
+  const pw = String(password || "").trim();
+  if (!e || !pw) return;
+
   const existing = db.prepare(`SELECT id, role FROM users WHERE email = ?`).get(e);
 
   if (existing) {
@@ -13,30 +30,27 @@ async function ensureAdmin({ name, email, password }) {
     return;
   }
 
-  const passHash = await hashPassword(password);
+  const passHash = await hashPassword(pw);
 
   db.prepare(`
     INSERT INTO users (name, email, password_hash, password_plain, role, is_active, created_at, owner_admin_id)
     VALUES (?, ?, ?, ?, 'ADMIN', 1, ?, NULL)
-  `).run(name, e, passHash, password, new Date().toISOString());
+  `).run(String(name || e).trim(), e, passHash, pw, new Date().toISOString());
   db.prepare(`UPDATE users SET owner_admin_id = id WHERE email = ?`).run(e);
 
   console.log(`[seed] Admin criado: ${e}`);
 }
 
 async function main() {
-  await ensureAdmin({
-    name: "Ronaldo",
-    email: "ronaldo@brasilprice.com.br",
-    password: process.env.ADMIN_RONALDO_PASSWORD || "Ronaldo@123",
-  });
+  const admins = parseSeedAdmins();
+  if (!admins.length) {
+    console.log("[seed] Nenhum admin configurado em AUTH_SEED_ADMINS.");
+    return;
+  }
 
-  await ensureAdmin({
-    name: "Ju",
-    email: "jussilene.valim@gmail.com",
-    password: process.env.ADMIN_JU_PASSWORD || "Ju@12345",
-  });
-
+  for (const admin of admins) {
+    await ensureAdmin(admin);
+  }
   console.log("[seed] OK");
 }
 

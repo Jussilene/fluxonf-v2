@@ -306,35 +306,48 @@ function safeSlug(v = "") {
 }
 
 async function ensureCrmTestUsers() {
+  const rawSeeds = String(process.env.CRM_SEED_USERS || "").trim();
+  if (!rawSeeds) return;
+
+  let tests = [];
+  try {
+    const parsed = JSON.parse(rawSeeds);
+    tests = Array.isArray(parsed) ? parsed : [];
+  } catch (err) {
+    throw new Error(`CRM_SEED_USERS inválido. Use JSON array. ${err?.message || err}`);
+  }
+
+  if (!tests.length) return;
+
   const now = new Date().toISOString();
+  const preferredAdminEmail = String(process.env.AUTH_PREFERRED_ADMIN_EMAIL || "").trim().toLowerCase();
   const rootAdmin =
-    db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get("jussilene.valim@gmail.com") ||
+    (preferredAdminEmail
+      ? db.prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) LIMIT 1`).get(preferredAdminEmail)
+      : null) ||
     db.prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`).get();
   const ownerAdminId = Number(rootAdmin?.id || 0) || null;
-  const tests = [
-    { name: "Cliente Essencial", email: "essencial@teste.com", plan: "ESSENCIAL", plan_value: 49.9, company_name: "Cliente Essencial LTDA", cnpj: "44.444.444/0001-44", whatsapp: "(11) 94444-4444" },
-    { name: "Cliente Starter", email: "lancamento@teste.com", plan: "STARTER", plan_value: 49.9, company_name: "Cliente Starter LTDA", cnpj: "11.111.111/0001-11", whatsapp: "(11) 91111-1111" },
-    { name: "Cliente Profissional", email: "starter@teste.com", plan: "PROFISSIONAL", plan_value: 97.0, company_name: "Cliente Profissional LTDA", cnpj: "22.222.222/0001-22", whatsapp: "(11) 92222-2222" },
-    { name: "Cliente Empresarial", email: "pro@teste.com", plan: "EMPRESARIAL", plan_value: 147.0, company_name: "Cliente Empresarial LTDA", cnpj: "33.333.333/0001-33", whatsapp: "(11) 93333-3333" },
-  ];
 
   for (const t of tests) {
     const email = String(t.email).trim().toLowerCase();
+    const password = String(t.password || process.env.CRM_SEED_DEFAULT_PASSWORD || "").trim();
+    if (!email || !password) continue;
+
     const existing = db.prepare(`SELECT id FROM users WHERE email = ?`).get(email);
-    const passHash = await hashPassword("123456");
+    const passHash = await hashPassword(password);
     if (existing?.id) {
       db.prepare(`
         UPDATE users
         SET name = ?, password_hash = ?, password_plain = ?, role = 'USER', is_active = 1, company_name = ?, cnpj = ?, whatsapp = ?, plan = ?, plan_value = ?, owner_admin_id = ?
         WHERE id = ?
-      `).run(t.name, passHash, "123456", t.company_name, t.cnpj, t.whatsapp, t.plan, t.plan_value, ownerAdminId, existing.id);
-      console.log(`[seed] usuário CRM atualizado: ${email} / senha 123456`);
+      `).run(t.name, passHash, password, t.company_name, t.cnpj, t.whatsapp, t.plan, t.plan_value, ownerAdminId, existing.id);
+      console.log(`[seed] usuário CRM atualizado: ${email}`);
     } else {
       db.prepare(`
         INSERT INTO users (name, email, password_hash, password_plain, role, is_active, created_at, company_name, cnpj, whatsapp, plan, plan_value, owner_admin_id)
         VALUES (?, ?, ?, ?, 'USER', 1, ?, ?, ?, ?, ?, ?, ?)
-      `).run(t.name, email, passHash, "123456", now, t.company_name, t.cnpj, t.whatsapp, t.plan, t.plan_value, ownerAdminId);
-      console.log(`[seed] usuário CRM criado: ${email} / senha 123456`);
+      `).run(t.name, email, passHash, password, now, t.company_name, t.cnpj, t.whatsapp, t.plan, t.plan_value, ownerAdminId);
+      console.log(`[seed] usuário CRM criado: ${email}`);
     }
   }
 }
@@ -404,6 +417,18 @@ function resolveCertPathForUser({ certPfxPath, empresaId, userEmail }) {
   return found || raw;
 }
 
+function directoryHasFiles(dir) {
+  try {
+    const entries = fs.readdirSync(dir, { withFileTypes: true });
+    for (const entry of entries) {
+      const full = path.join(dir, entry.name);
+      if (entry.isFile()) return true;
+      if (entry.isDirectory() && directoryHasFiles(full)) return true;
+    }
+  } catch {}
+  return false;
+}
+
 // ---------------------------
 // ROBÔ – MANUAL (multi-tenant: usa req.userEmail como "dono")
 // ---------------------------
@@ -415,24 +440,40 @@ app.post("/api/nf/manual", async (req, res) => {
     const baixarPdf = !!req.body?.baixarPdf;
 
     const tipos = normalizeTipos(req.body?.processarTipos, req.body?.tipoNota);
-    const bodyCertPath = req.body?.certPfxPath || req.body?.pfxPath || "";
+    const requestUserEmail = req.body?.usuarioEmail || req.userEmail || "";
+    const empresaCadastro =
+      listarEmpresas(requestUserEmail).find((e) => String(e.id) === String(req.body?.empresaId || "")) ||
+      listarEmpresas("").find((e) => String(e.id) === String(req.body?.empresaId || ""));
+    const authTypeCadastro = empresaCadastro?.authType || req.body?.authType || "";
+
+    const bodyCertPath =
+      empresaCadastro?.certPfxPath ||
+      empresaCadastro?.pfxPath ||
+      empresaCadastro?.certFile ||
+      req.body?.certPfxPath ||
+      req.body?.pfxPath ||
+      "";
     const bodyCertPass =
+      empresaCadastro?.certPassphrase ||
+      empresaCadastro?.certPfxPassphrase ||
+      empresaCadastro?.passphrase ||
+      empresaCadastro?.certPass ||
       req.body?.certPassphrase ||
       req.body?.certPfxPassphrase ||
       req.body?.passphrase ||
       req.body?.certPass ||
       "";
 
-    const isCertReq =
-      req.body?.usarCertificadoA1 === true ||
-      String(req.body?.authType || "").toLowerCase().includes("certificado") ||
-      !!(bodyCertPath && bodyCertPass);
+    const isCertReq = empresaCadastro
+      ? String(authTypeCadastro || "").toLowerCase().includes("certificado")
+      : req.body?.usarCertificadoA1 === true ||
+        String(authTypeCadastro || "").toLowerCase().includes("certificado");
 
     const resolvedCertPath = isCertReq
       ? resolveCertPathForUser({
           certPfxPath: bodyCertPath,
           empresaId: req.body?.empresaId || "",
-          userEmail: req.body?.usuarioEmail || req.userEmail || "",
+          userEmail: requestUserEmail,
         })
       : "";
 
@@ -441,11 +482,13 @@ app.post("/api/nf/manual", async (req, res) => {
       baixarXml,
       baixarPdf,
       usarCertificadoA1: isCertReq,
-      authType: isCertReq ? "Certificado Digital (A1)" : req.body?.authType || "",
-      certPfxPath: resolvedCertPath || bodyCertPath,
-      certPassphrase: bodyCertPass,
+      authType: isCertReq ? "Certificado Digital (A1)" : authTypeCadastro || "Login e Senha",
+      certPfxPath: isCertReq ? resolvedCertPath || bodyCertPath : "",
+      certPassphrase: isCertReq ? bodyCertPass : "",
+      login: isCertReq ? "" : empresaCadastro?.portalLogin || empresaCadastro?.loginPortal || req.body?.login || "",
+      senha: isCertReq ? "" : empresaCadastro?.portalSenha || empresaCadastro?.senhaPortal || req.body?.senha || "",
       // ✅ garante que histórico/execuções usem o usuário do header ou sessão
-      usuarioEmail: req.body?.usuarioEmail || req.userEmail || "",
+      usuarioEmail: requestUserEmail,
       onLog: (msg) => console.log(msg),
     };
 
@@ -470,7 +513,7 @@ app.post("/api/nf/manual", async (req, res) => {
 
     const zipTarget = rootJobDir && fs.existsSync(rootJobDir) ? rootJobDir : null;
 
-    if (zipTarget) {
+    if (zipTarget && directoryHasFiles(zipTarget)) {
       const zipName = `nfse-manual-${Date.now()}.zip`;
       const zipPath = path.join(ZIP_DIR, zipName);
 
@@ -491,6 +534,7 @@ app.post("/api/nf/manual", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Erro ao executar download manual",
+      detail: err?.message || String(err),
     });
   }
 });
@@ -546,7 +590,11 @@ app.post("/api/nf/lote", async (req, res) => {
         : "";
       return {
         ...emp,
-        certPfxPath: certPath || emp?.certPfxPath || emp?.pfxPath || emp?.certFile || "",
+        usarCertificadoA1: isCert,
+        certPfxPath: isCert ? certPath || emp?.certPfxPath || emp?.pfxPath || emp?.certFile || "" : "",
+        pfxPath: isCert ? emp?.pfxPath || "" : "",
+        certFile: isCert ? emp?.certFile || "" : "",
+        certPassphrase: isCert ? emp?.certPassphrase || emp?.certPfxPassphrase || emp?.passphrase || emp?.certPass || "" : "",
       };
     });
 
@@ -565,7 +613,7 @@ app.post("/api/nf/lote", async (req, res) => {
 
     let downloadZipUrl = null;
 
-    if (finalDir && fs.existsSync(finalDir)) {
+    if (finalDir && fs.existsSync(finalDir) && directoryHasFiles(finalDir)) {
       const zipName = `nfse-lote-${Date.now()}.zip`;
       const zipPath = path.join(ZIP_DIR, zipName);
 
@@ -584,6 +632,7 @@ app.post("/api/nf/lote", async (req, res) => {
     return res.status(500).json({
       success: false,
       error: "Erro ao executar lote",
+      detail: err?.message || String(err),
     });
   }
 });

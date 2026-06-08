@@ -47,6 +47,10 @@ function adminScopeId(req) {
   return Number.isFinite(scope) ? scope : null;
 }
 
+function defaultResetPassword() {
+  return String(process.env.ADMIN_DEFAULT_RESET_PASSWORD || "").trim();
+}
+
 // GET /admin/users
 router.get("/users", (req, res) => {
   const scopeId = adminScopeId(req);
@@ -215,7 +219,7 @@ router.post("/users/:id/reset-password", async (req, res) => {
 
   if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "ID inválido" });
 
-  const pw = String(newPassword || "123456");
+  const pw = String(newPassword || defaultResetPassword());
   if (!pw || pw.length < 6) {
     return res.status(400).json({ ok: false, error: "Senha inválida (mín. 6)" });
   }

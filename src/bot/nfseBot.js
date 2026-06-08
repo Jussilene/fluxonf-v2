@@ -16,6 +16,18 @@ function envInt(name, defaultValue) {
   return /^\d+$/.test(raw) ? Number(raw) : defaultValue;
 }
 
+function isBrowserClosedError(err) {
+  const msg = String(err?.message || err || "");
+  return /Target page, context or browser has been closed|Browser has been closed|Page closed|context was destroyed/i.test(msg);
+}
+
+function friendlyBotError(err) {
+  if (isBrowserClosedError(err)) {
+    return "O navegador do robô foi fechado antes da captura terminar. Inicie a captura novamente e mantenha a janela aberta até finalizar.";
+  }
+  return err?.message || String(err || "Erro não identificado");
+}
+
 // âœ… AJUSTE MÃNIMO #1: controlar headless via .env (NFSE_HEADLESS / NFS_HEADLESS)
 // - NFSE_HEADLESS=0 -> abre navegador
 // - NFSE_HEADLESS=1 -> headless
@@ -232,21 +244,26 @@ async function waitForHumanValidationToFinish(page, pushLog, contextLabel = "dow
 }
 function resolveA1CertConfig(params = {}, pushLog = () => {}) {
   try {
-    const certPathHint = String(params?.certPfxPath || params?.pfxPath || process.env.NFSE_CERT_PFX_PATH || "").trim();
-    const certPassHint = String(
+    const explicitCertPath = String(params?.certPfxPath || params?.pfxPath || "").trim();
+    const explicitCertPass = String(
       params?.certPassphrase ||
         params?.certPfxPassphrase ||
         params?.passphrase ||
         params?.certPass ||
-        process.env.NFSE_CERT_PFX_PASSPHRASE ||
-        process.env.NFSE_CERT_PFX_PASS ||
         ""
     ).trim();
-    const useA1 =
+    const certRequested =
       params?.usarCertificadoA1 === true ||
-      String(params?.authType || "").toLowerCase().includes("certificado") ||
-      (!!certPathHint && !!certPassHint);
-    if (!useA1) return null;
+      String(params?.authType || "").toLowerCase().includes("certificado");
+
+    if (!certRequested) return null;
+
+    const allowEnvCertificate = params?.allowEnvCertificate === true;
+    const certPathHint = String(explicitCertPath || (allowEnvCertificate ? process.env.NFSE_CERT_PFX_PATH : "") || "").trim();
+    const certPassHint = String(
+      explicitCertPass ||
+        (allowEnvCertificate ? process.env.NFSE_CERT_PFX_PASSPHRASE || process.env.NFSE_CERT_PFX_PASS || "" : "")
+    ).trim();
 
     const portalOrigin =
       String(params?.certOrigin || process.env.NFSE_CERT_ORIGIN || "https://www.nfse.gov.br").trim() ||
@@ -661,6 +678,7 @@ async function clickAndCaptureFile({
   extPreferida,
   arquivoIndexRef,
   linhaIndex,
+  expectedEmpresaCnpj,
 }) {
   try {
     let download = null;
@@ -751,7 +769,11 @@ async function clickAndCaptureFile({
       originalName += ext;
     }
 
-    const cnpj = extractCnpjLike(originalName) || extractCnpjLike(download.url()) || null;
+    const cnpj =
+      String(expectedEmpresaCnpj || "").replace(/\D/g, "").slice(0, 14) ||
+      extractCnpjLike(originalName) ||
+      extractCnpjLike(download.url()) ||
+      null;
 
     arquivoIndexRef.value += 1;
     const index = arquivoIndexRef.value;
@@ -803,9 +825,12 @@ async function navigateToTipo(page, tipoNota, pushLog) {
       await page.waitForURL("**/Notas/Recebidas", { timeout: 15000 }).catch(() => {});
       pushLog("[BOT] Tela de Recebidas aberta.");
       return;
-    } catch {
+    } catch (err) {
+      if (isBrowserClosedError(err)) throw new Error(friendlyBotError(err));
       pushLog("[BOT] Falha ao clicar Recebidas. Tentando URL direta...");
-      await page.goto(recebidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+      await page.goto(recebidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch((gotoErr) => {
+        throw new Error(friendlyBotError(gotoErr));
+      });
       pushLog(`[BOT] URL atual: ${page.url()}`);
       return;
     }
@@ -833,9 +858,12 @@ async function navigateToTipo(page, tipoNota, pushLog) {
     await page.waitForURL("**/Notas/Emitidas", { timeout: 15000 }).catch(() => {});
     pushLog("[BOT] Tela de Emitidas aberta.");
     return;
-  } catch {
+  } catch (err) {
+    if (isBrowserClosedError(err)) throw new Error(friendlyBotError(err));
     pushLog("[BOT] Falha ao clicar Emitidas. Tentando URL direta...");
-    await page.goto(emitidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 });
+    await page.goto(emitidasUrl, { waitUntil: "domcontentloaded", timeout: 60000 }).catch((gotoErr) => {
+      throw new Error(friendlyBotError(gotoErr));
+    });
     pushLog(`[BOT] URL atual: ${page.url()}`);
     return;
   }
@@ -1126,6 +1154,7 @@ async function runManualDownloadSimulado(params = {}) {
     pastaDestino,
     empresaId,
     empresaNome,
+    empresaCnpj,
     modoExecucao,
     jobDir,
 
@@ -1213,12 +1242,12 @@ async function runManualDownloadPortal(params = {}) {
   const certRequested =
     params?.usarCertificadoA1 === true ||
     String(params?.authType || "").toLowerCase().includes("certificado");
-  const login = loginParam || process.env.NFSE_USER;
-  const senha = senhaParam || process.env.NFSE_PASSWORD;
+  const login = certRequested ? "" : loginParam || process.env.NFSE_USER;
+  const senha = certRequested ? "" : senhaParam || process.env.NFSE_PASSWORD;
   const hasCreds = !!(login && senha);
   const useA1 = !!certCfg;
 
-  if (certRequested && !useA1 && !hasCreds) {
+  if (certRequested && !useA1) {
     throw new Error("Modo certificado A1 selecionado, mas certificado invÃ¡lido/ausente. Verifique arquivo e senha do certificado.");
   }
 
@@ -1249,7 +1278,7 @@ async function runManualDownloadPortal(params = {}) {
       ...(useA1Active ? { clientCertificates: certCfg.clientCertificates } : {}),
     });
   } catch (ctxErr) {
-    if (useA1Active && hasCreds) {
+    if (useA1Active && hasCreds && !certRequested) {
       pushLog(`[BOT] Falha ao carregar certificado A1 (${ctxErr.message}). Continuando com login/senha.`);
       useA1Active = false;
       context = await browser.newContext({ acceptDownloads: true });
@@ -1299,30 +1328,39 @@ async function runManualDownloadPortal(params = {}) {
       if (envLoginDigits && envLoginDigits !== envLoginRaw) addTentativa(envLoginDigits, envSenhaRaw, "env-sem-mascara");
 
       for (let i = 0; i < tentativasCredenciais.length; i += 1) {
-        const tentativa = tentativasCredenciais[i];
-        if (!isStillOnLogin()) {
-          await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch(() => {});
-        }
+        try {
+          const tentativa = tentativasCredenciais[i];
+          if (!isStillOnLogin()) {
+            await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded", timeout: 30000 }).catch((err) => {
+              if (isBrowserClosedError(err)) throw err;
+            });
+          }
 
-        await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', "");
-        await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', "");
-        await page.type('input[name="Login"], input[id="Login"], input[type="text"]', tentativa.login, { delay: 20 });
-        pushLog(
-          `[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1}/${tentativasCredenciais.length}, ${tentativa.label})` : ""}.`
-        );
-        await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', tentativa.senha, { delay: 15 });
-        pushLog("[BOT] Senha preenchida.");
-        await page.click(
-          'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
-          { timeout: 12000, noWaitAfter: true }
-        );
-        pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
-        await Promise.race([
-          page.waitForURL((url) => !/\/Login(\?|$)/i.test(url.toString()), { timeout: 22000 }),
-          page.waitForTimeout(22000),
-        ]).catch(() => {});
-        if (!isStillOnLogin()) return true;
-        await page.waitForTimeout(800);
+          await page.fill('input[name="Login"], input[id="Login"], input[type="text"]', "");
+          await page.fill('input[name="Senha"], input[id="Senha"], input[type="password"]', "");
+          await page.type('input[name="Login"], input[id="Login"], input[type="text"]', tentativa.login, { delay: 20 });
+          pushLog(
+            `[BOT] Login preenchido${i > 0 ? ` (tentativa ${i + 1}/${tentativasCredenciais.length}, ${tentativa.label})` : ""}.`
+          );
+          await page.type('input[name="Senha"], input[id="Senha"], input[type="password"]', tentativa.senha, { delay: 15 });
+          pushLog("[BOT] Senha preenchida.");
+          await page.click(
+            'button[type="submit"], input[type="submit"], button:has-text("Entrar"), button:has-text("Acessar")',
+            { timeout: 12000, noWaitAfter: true }
+          );
+          pushLog("[BOT] BotÃ£o de login clicado. Aguardando...");
+          await Promise.race([
+            page.waitForURL((url) => !/\/Login(\?|$)/i.test(url.toString()), { timeout: 22000 }),
+            page.waitForTimeout(22000),
+          ]).catch((err) => {
+            if (isBrowserClosedError(err)) throw err;
+          });
+          if (!isStillOnLogin()) return true;
+          await page.waitForTimeout(800);
+        } catch (err) {
+          if (isBrowserClosedError(err)) throw new Error(friendlyBotError(err));
+          throw err;
+        }
       }
       pushLog("[BOT] Login nÃ£o autenticado apÃ³s tentativas.");
       return false;
@@ -1370,7 +1408,7 @@ async function runManualDownloadPortal(params = {}) {
 
     if (useA1Active) {
       const okA1 = await attemptA1();
-      if (!okA1 && hasCreds) {
+      if (!okA1 && hasCreds && !certRequested) {
         pushLog("[BOT] A1 falhou. Tentando fallback por login/senha...");
         await attemptLoginWithCreds();
       }
@@ -1418,7 +1456,7 @@ async function runManualDownloadPortal(params = {}) {
 
       if (useA1Active) {
         const okA1 = await attemptA1();
-        if (!okA1 && hasCreds) {
+        if (!okA1 && hasCreds && !certRequested) {
           await attemptLoginWithCreds();
         }
       } else if (hasCreds) {
@@ -1635,6 +1673,7 @@ async function runManualDownloadPortal(params = {}) {
                     extPreferida: "xml",
                     arquivoIndexRef,
                     linhaIndex,
+                    expectedEmpresaCnpj: empresaCnpj || params?.cnpj || "",
                   });
                 } else {
                   pushLog(`[BOT] Linha ${linhaIndex}: XML nÃ£o encontrado no menu.`);
@@ -1733,7 +1772,7 @@ async function runManualDownloadPortal(params = {}) {
 
               await page.waitForTimeout(5);
             } catch (linhaErr) {
-              pushLog(`[BOT] Erro ao processar linha ${linhaIndex}: ${linhaErr.message}`);
+              pushLog(`[BOT] Erro ao processar linha ${linhaIndex}: ${friendlyBotError(linhaErr)}`);
             }
           }
 
@@ -1746,9 +1785,13 @@ async function runManualDownloadPortal(params = {}) {
 
     pushLog(`[BOT] Finalizado (${tipoNota}). Total capturado: ${arquivoIndexRef.value}.`);
   } catch (err) {
-    console.error("Erro no robÃ´ Playwright:", err);
-    erroExecucao = err?.message || "Erro nÃ£o identificado";
-    pushLog(`[BOT] ERRO: ${err.message}`);
+    erroExecucao = friendlyBotError(err);
+    if (isBrowserClosedError(err)) {
+      console.warn(`[BOT] ${erroExecucao}`);
+    } else {
+      console.error("Erro no robÃ´ Playwright:", err);
+    }
+    pushLog(`[BOT] ERRO: ${erroExecucao}`);
     teveErro = true;
   } finally {
     await browser.close().catch(() => {});
@@ -1852,10 +1895,10 @@ export async function runLoteDownload(empresas = [], options = {}) {
       pushLog("--------------------------------------------------------------");
       pushLog(`[BOT] Empresa: ${emp.nome} (CNPJ: ${emp.cnpj})`);
 
-      const login = emp.loginPortal || emp.cnpj || null;
-      const senha = emp.senhaPortal || null;
       const authType = String(emp.authType || "");
       const isCert = authType.toLowerCase().includes("certificado");
+      const login = isCert ? null : emp.loginPortal || emp.cnpj || null;
+      const senha = isCert ? null : emp.senhaPortal || null;
       const hasCreds = !!(login && senha);
       const empFalhas = [];
       let empArquivos = 0;
@@ -1893,10 +1936,11 @@ export async function runLoteDownload(empresas = [], options = {}) {
               senha,
               authType,
               usarCertificadoA1: isCert,
-              certPfxPath: emp.certPfxPath || emp.pfxPath || null,
-              certPassphrase: emp.certPassphrase || emp.passphrase || null,
+              certPfxPath: isCert ? emp.certPfxPath || emp.pfxPath || null : null,
+              certPassphrase: isCert ? emp.certPassphrase || emp.passphrase || null : null,
               empresaId: emp.id || emp.cnpj,
               empresaNome: emp.nome,
+              empresaCnpj: emp.cnpj,
               modoExecucao: "lote",
               onLog: (msg) => pushLog(msg),
               jobDir: empresaDir,

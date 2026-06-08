@@ -8,12 +8,14 @@ import { requireAuth } from "./auth.middleware.js";
 const router = express.Router();
 
 function resolveRegistrationOwnerAdminId() {
-  const preferredAdminEmail = "jvr.solucoes8@gmail.com";
-  const preferredAdmin = db
-    .prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) AND upper(trim(role)) = 'ADMIN' LIMIT 1`)
-    .get(preferredAdminEmail);
+  const preferredAdminEmail = String(process.env.AUTH_PREFERRED_ADMIN_EMAIL || "").trim().toLowerCase();
+  if (preferredAdminEmail) {
+    const preferredAdmin = db
+      .prepare(`SELECT id FROM users WHERE lower(trim(email)) = lower(trim(?)) AND upper(trim(role)) = 'ADMIN' LIMIT 1`)
+      .get(preferredAdminEmail);
 
-  if (preferredAdmin?.id) return Number(preferredAdmin.id);
+    if (preferredAdmin?.id) return Number(preferredAdmin.id);
+  }
 
   const fallbackAdmin = db
     .prepare(`SELECT id FROM users WHERE upper(trim(role)) = 'ADMIN' ORDER BY id ASC LIMIT 1`)
