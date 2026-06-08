@@ -11,6 +11,11 @@ const NFSE_PORTAL_URL =
 
 const isLinux = process.platform === "linux";
 
+function envInt(name, defaultValue) {
+  const raw = String(process.env[name] ?? "").trim();
+  return /^\d+$/.test(raw) ? Number(raw) : defaultValue;
+}
+
 // âœ… AJUSTE MÃNIMO #1: controlar headless via .env (NFSE_HEADLESS / NFS_HEADLESS)
 // - NFSE_HEADLESS=0 -> abre navegador
 // - NFSE_HEADLESS=1 -> headless
@@ -28,12 +33,14 @@ async function launchNFSEBrowser() {
     `[BOT] Browser launch: headless=${headless} (NFSE_HEADLESS=${process.env.NFSE_HEADLESS || ""} | NFS_HEADLESS=${process.env.NFS_HEADLESS || ""})`
   );
 
+  const args = isLinux
+    ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
+    : ["--start-maximized", "--window-size=1280,900"];
+
   return await chromium.launch({
     headless,
     slowMo,
-    args: isLinux
-      ? ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"]
-      : [],
+    args,
   });
 }
 
@@ -133,10 +140,108 @@ function getTipoDirFromRoot(rootJobDir, tipoNota) {
   if (tipoNota === "canceladas") return path.join(rootJobDir, "Canceladas");
   return path.join(rootJobDir, "Emitidas");
 }
+
+async function bringPortalToFront(page) {
+  try {
+    const session = await page.context().newCDPSession(page);
+    const { windowId } = await session.send("Browser.getWindowForTarget");
+    await session
+      .send("Browser.setWindowBounds", {
+        windowId,
+        bounds: { windowState: "normal" },
+      })
+      .catch(() => {});
+    await session
+      .send("Browser.setWindowBounds", {
+        windowId,
+        bounds: { windowState: "maximized" },
+      })
+      .catch(() => {});
+    await page.waitForTimeout(300).catch(() => {});
+  } catch {}
+
+  await page.bringToFront().catch(() => {});
+  await page.evaluate(() => window.focus()).catch(() => {});
+  await page.waitForTimeout(300).catch(() => {});
+}
+
+async function isHumanValidationVisible(page) {
+  try {
+    const byText = await page
+      .locator("text=/VALIDA..O DE USU.RIO|Sou humano|hCaptcha|HCaptcha|Confirmar/i")
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+    if (byText) return true;
+
+    const byFrame = await page
+      .locator('iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[title*="captcha" i]')
+      .first()
+      .isVisible({ timeout: 800 })
+      .catch(() => false);
+
+    return !!byFrame;
+  } catch {
+    return false;
+  }
+}
+
+async function waitForHumanValidationToFinish(page, pushLog, contextLabel = "download") {
+  const visible = await isHumanValidationVisible(page);
+  if (!visible) return false;
+
+  await bringPortalToFront(page);
+
+  const timeoutMs = envInt("NFSE_CAPTCHA_TIMEOUT_MS", 300000);
+  pushLog(
+    `[BOT] Validação humana detectada (${contextLabel}). Resolva o CAPTCHA na janela aberta e clique em Confirmar. Vou aguardar até ${Math.round(
+      timeoutMs / 1000
+    )}s.`
+  );
+
+  const solved = await page
+    .waitForFunction(
+      () => {
+        const bodyText = document.body ? document.body.innerText || "" : "";
+        const stillHasText = /VALIDA..O DE USU.RIO|Sou humano|hCaptcha|HCaptcha|Confirmar/i.test(bodyText);
+        const hasCaptchaFrame = !!document.querySelector(
+          'iframe[src*="hcaptcha"], iframe[title*="hCaptcha"], iframe[title*="captcha" i]'
+        );
+        const visibleDialog = Array.from(
+          document.querySelectorAll(".modal, .modal-dialog, [role='dialog']")
+        ).some((el) => {
+          const rect = el.getBoundingClientRect();
+          const style = window.getComputedStyle(el);
+          return rect.width > 0 && rect.height > 0 && style.display !== "none" && style.visibility !== "hidden";
+        });
+        return !stillHasText && !hasCaptchaFrame && !visibleDialog;
+      },
+      undefined,
+      { timeout: timeoutMs }
+    )
+    .then(() => true)
+    .catch(() => false);
+
+  if (solved) {
+    pushLog(`[BOT] Validação humana concluída (${contextLabel}). Continuando...`);
+  } else {
+    pushLog(`[BOT] Tempo de espera do CAPTCHA esgotado (${contextLabel}).`);
+  }
+
+  return solved;
+}
 function resolveA1CertConfig(params = {}, pushLog = () => {}) {
   try {
     const certPathHint = String(params?.certPfxPath || params?.pfxPath || process.env.NFSE_CERT_PFX_PATH || "").trim();
-    const certPassHint = String(params?.certPassphrase || params?.passphrase || process.env.NFSE_CERT_PFX_PASS || "").trim();
+    const certPassHint = String(
+      params?.certPassphrase ||
+        params?.certPfxPassphrase ||
+        params?.passphrase ||
+        params?.certPass ||
+        process.env.NFSE_CERT_PFX_PASSPHRASE ||
+        process.env.NFSE_CERT_PFX_PASS ||
+        ""
+    ).trim();
     const useA1 =
       params?.usarCertificadoA1 === true ||
       String(params?.authType || "").toLowerCase().includes("certificado") ||
@@ -393,7 +498,7 @@ async function baixarPdfPorRequest({ context, page, urlPdf, destinoPdf, log }) {
   return true;
 }
 
-async function baixarPdfRobusto({ context, page, clickPdfOption, destinoPdf, log, pdfLinkHandle }) {
+async function baixarPdfRobusto({ context, page, clickPdfOption, destinoPdf, log, pdfLinkHandle, captchaRetry = false }) {
   fs.mkdirSync(path.dirname(destinoPdf), { recursive: true });
 
   const downloadPromise = page.waitForEvent("download", { timeout: 15000 }).catch(() => null);
@@ -416,6 +521,14 @@ async function baixarPdfRobusto({ context, page, clickPdfOption, destinoPdf, log
     responsePromise.then((r) => ({ type: "response", r })),
     new Promise((r) => setTimeout(() => r({ type: "timeout" }), 16000)),
   ]);
+
+  if (first.type === "timeout" && !captchaRetry && (await isHumanValidationVisible(page))) {
+    const solved = await waitForHumanValidationToFinish(page, log, "PDF/DANFS");
+    if (solved) {
+      log?.("[BOT] PDF/DANFS: tentando novamente após validação humana.");
+      return await baixarPdfRobusto({ context, page, clickPdfOption, destinoPdf, log, pdfLinkHandle, captchaRetry: true });
+    }
+  }
 
   if (first.type === "response" && first.r) {
     const resp = first.r;
@@ -550,16 +663,58 @@ async function clickAndCaptureFile({
   linhaIndex,
 }) {
   try {
-    const [download] = await Promise.all([
-      page.waitForEvent("download", { timeout: 25000 }).catch(() => null),
-      element.evaluate((el) => {
-        if (el instanceof HTMLElement) {
-          el.click();
-        } else {
-          el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+    let download = null;
+    const downloadPromise = page.waitForEvent("download", { timeout: envInt("NFSE_DOWNLOAD_WAIT_MS", 25000) }).catch(() => null);
+
+    await element.evaluate((el) => {
+      if (el instanceof HTMLElement) {
+        el.click();
+      } else {
+        el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+      }
+    });
+
+    const detectUntil = Date.now() + envInt("NFSE_CAPTCHA_DETECT_AFTER_CLICK_MS", 2500);
+    while (!download && Date.now() < detectUntil) {
+      download = await Promise.race([
+        downloadPromise,
+        new Promise((resolve) => setTimeout(() => resolve(null), 120)),
+      ]);
+      if (download) break;
+      if (await isHumanValidationVisible(page)) break;
+    }
+
+    if (!download && (await isHumanValidationVisible(page))) {
+      const captchaTimeout = envInt("NFSE_CAPTCHA_TIMEOUT_MS", 300000);
+      const afterCaptchaDownloadPromise = page.waitForEvent("download", { timeout: captchaTimeout }).catch(() => null);
+      const solved = await waitForHumanValidationToFinish(
+        page,
+        pushLog,
+        `${tipoNota} linha ${linhaIndex} ${extPreferida || "arquivo"}`
+      );
+
+      if (solved) {
+        download = await Promise.race([
+          afterCaptchaDownloadPromise,
+          new Promise((resolve) => setTimeout(() => resolve(null), envInt("NFSE_DOWNLOAD_AFTER_CAPTCHA_WAIT_MS", 8000))),
+        ]);
+
+        if (!download) {
+          pushLog(`[BOT] Linha ${linhaIndex}: tentando novamente o download após validação humana.`);
+          const retryPromise = page.waitForEvent("download", { timeout: envInt("NFSE_DOWNLOAD_WAIT_MS", 25000) }).catch(() => null);
+          await element.evaluate((el) => {
+            if (el instanceof HTMLElement) {
+              el.click();
+            } else {
+              el.dispatchEvent(new MouseEvent("click", { bubbles: true, cancelable: true }));
+            }
+          });
+          download = await retryPromise;
         }
-      }),
-    ]);
+      }
+    }
+
+    download = download || (await downloadPromise);
 
     if (!download) {
       pushLog(
@@ -1103,6 +1258,7 @@ async function runManualDownloadPortal(params = {}) {
     }
   }
   const page = await context.newPage();
+  await bringPortalToFront(page);
 
   const arquivoIndexRef = { value: 0 };
   let teveErro = false;
@@ -1112,6 +1268,7 @@ async function runManualDownloadPortal(params = {}) {
     // 1) Abrir login
     pushLog("[BOT] Abrindo portal nacional da NFS-e...");
     await page.goto(NFSE_PORTAL_URL, { waitUntil: "domcontentloaded" });
+    await bringPortalToFront(page);
     pushLog("[BOT] PÃ¡gina de login carregada.");
 
     // 2) Autenticacao: se houver certificado e credenciais, tenta A1 primeiro e faz fallback para login/senha.

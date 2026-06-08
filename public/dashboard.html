@@ -1421,6 +1421,9 @@
                 </span>
                 <input id="empresasSearch" class="field w-full rounded-xl2 px-12 py-3 text-sm" placeholder="Buscar por nome, CNPJ ou razão social..." />
               </div>
+              <div id="empresasCount" class="h-11 px-4 rounded-xl2 border border-slate-200/70 bg-white/70 text-slate-700 text-sm font-semibold inline-flex items-center justify-center shrink-0 whitespace-nowrap dark:border-white/10 dark:bg-white/5 dark:text-white/75">
+                0 empresas
+              </div>
               <button id="btnNovaEmpresa" class="btn-primary h-11 min-w-[178px] px-5 rounded-xl2 text-sm font-semibold inline-flex items-center justify-center gap-2 w-full lg:w-auto shrink-0 whitespace-nowrap leading-none">
                 <span class="text-white inline-flex h-4 w-4 items-center justify-center leading-none">
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none">
@@ -1446,7 +1449,13 @@
                 <button id="modalEmpresaClose" class="text-white/55 hover:text-white/85">✕</button>
               </div>
 
+              <div id="empresaModalTabs" class="mt-5 grid grid-cols-2 gap-2">
+                <button type="button" id="empresaTabManual" class="btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold">Manual</button>
+                <button type="button" id="empresaTabLote" class="btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold opacity-75 hover:opacity-100">Em lote</button>
+              </div>
+
               <div class="empresa-modal-body mt-6 space-y-4">
+                <div id="empresaManualPanel" class="space-y-4">
                 <!-- hidden id (ediÃƒÂ§ÃƒÂ£o) -->
                 <input id="empresaId" type="hidden" />
 
@@ -1546,7 +1555,37 @@
                   </div>
                   <div>
                     <label class="text-sm font-semibold text-white/80">Senha Certificado</label>
-                    <input id="empresaCertPass" type="password" class="field w-full rounded-xl2 px-4 py-3 text-sm mt-2" placeholder="Senha do certificado" />
+                    <div class="relative mt-2">
+                      <input id="empresaCertPass" type="password" class="field w-full rounded-xl2 px-4 py-3 text-sm pr-12" placeholder="Senha do certificado" />
+                      <button id="toggleEmpresaCertPass" class="absolute right-3 top-1/2 -translate-y-1/2 text-white/55 hover:text-white/85" type="button" title="Mostrar senha do certificado" aria-label="Mostrar senha do certificado"> 👁 </button>
+                    </div>
+                  </div>
+                </div>
+                </div>
+
+                <div id="empresaLotePanel" class="hidden space-y-4">
+                  <div class="rounded-xl2 border border-slate-200/70 bg-white/70 p-4 dark:border-white/10 dark:bg-white/5">
+                    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-3">
+                      <div>
+                        <p class="text-sm font-semibold text-slate-900 dark:text-white/90">Importar empresas por planilha</p>
+                        <p class="mt-1 text-xs text-slate-500 dark:text-white/50">Use o modelo Excel, valide o arquivo e cadastre somente as linhas corretas.</p>
+                      </div>
+                      <button id="btnBaixarModeloEmpresas" type="button" class="btn-ghost px-4 py-2 rounded-xl2 text-sm font-semibold shrink-0">Baixar modelo</button>
+                    </div>
+                  </div>
+
+                  <div class="grid grid-cols-1 md:grid-cols-[1fr_auto] gap-3 items-end">
+                    <div>
+                      <label class="text-sm font-semibold text-white/80">Arquivo Excel ou CSV</label>
+                      <input id="empresaLoteFile" type="file" accept=".xls,.csv,application/vnd.ms-excel,text/csv" class="field w-full rounded-xl2 px-4 py-3 text-sm mt-2" />
+                    </div>
+                    <button id="btnValidarEmpresasLote" type="button" class="btn-primary h-11 px-5 rounded-xl2 text-sm font-semibold">Validar arquivo</button>
+                  </div>
+
+                  <div id="empresaLotePreview" class="hidden rounded-xl2 border border-slate-200/70 bg-white/70 p-4 dark:border-white/10 dark:bg-white/5"></div>
+
+                  <div class="flex items-center justify-end">
+                    <button id="btnCadastrarEmpresasLote" type="button" class="btn-primary px-6 py-3 rounded-xl2 text-sm font-semibold hidden">Cadastrar empresas</button>
                   </div>
                 </div>
               </div>
@@ -3602,8 +3641,13 @@
       const modalClose = document.getElementById("modalEmpresaClose");
       const modalCancel = document.getElementById("modalEmpresaCancel");
       const modalBackdrop = modal ? modal.querySelector(".modal-backdrop") : null;
+      const empresaTabManual = document.getElementById("empresaTabManual");
+      const empresaTabLote = document.getElementById("empresaTabLote");
+      const empresaManualPanel = document.getElementById("empresaManualPanel");
+      const empresaLotePanel = document.getElementById("empresaLotePanel");
 
       let previousBodyOverflow = "";
+      let empresaModalTab = "manual";
 
       function openModal() {
         if (!modal) return;
@@ -3619,13 +3663,34 @@
         modal.classList.remove("flex");
       }
 
+      function setEmpresaModalTab(tab) {
+        empresaModalTab = tab === "lote" ? "lote" : "manual";
+        const isLote = empresaModalTab === "lote";
+        if (empresaManualPanel) empresaManualPanel.classList.toggle("hidden", isLote);
+        if (empresaLotePanel) empresaLotePanel.classList.toggle("hidden", !isLote);
+        if (modalEmpresaSave) modalEmpresaSave.classList.toggle("hidden", isLote);
+        if (empresaTabManual) {
+          empresaTabManual.className = isLote
+            ? "btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold opacity-75 hover:opacity-100"
+            : "btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold";
+        }
+        if (empresaTabLote) {
+          empresaTabLote.className = isLote
+            ? "btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold"
+            : "btn-primary rounded-xl2 px-4 py-2.5 text-sm font-semibold opacity-75 hover:opacity-100";
+        }
+      }
+
       if (btnNovaEmpresa) btnNovaEmpresa.addEventListener("click", () => {
         resetEmpresaForm();
+        setEmpresaModalTab("manual");
         openModal();
       });
       if (modalClose) modalClose.addEventListener("click", closeModal);
       if (modalCancel) modalCancel.addEventListener("click", closeModal);
       if (modalBackdrop) modalBackdrop.addEventListener("click", closeModal);
+      if (empresaTabManual) empresaTabManual.addEventListener("click", () => setEmpresaModalTab("manual"));
+      if (empresaTabLote) empresaTabLote.addEventListener("click", () => setEmpresaModalTab("lote"));
 
       // mostrar/ocultar senha
       const toggleEmpresaSenha = document.getElementById("toggleEmpresaSenha");
@@ -3635,11 +3700,26 @@
           empresaSenha.type = empresaSenha.type === "password" ? "text" : "password";
         });
       }
+      const toggleEmpresaCertPass = document.getElementById("toggleEmpresaCertPass");
+      const empresaCertPass = document.getElementById("empresaCertPass");
+      if (toggleEmpresaCertPass && empresaCertPass) {
+        toggleEmpresaCertPass.addEventListener("click", () => {
+          empresaCertPass.type = empresaCertPass.type === "password" ? "text" : "password";
+        });
+      }
       const empresaAuthType = document.getElementById("empresaAuthType");
       const empresaCnpj = document.getElementById("empresaCnpj");
       const empresaTelefone = document.getElementById("empresaTelefone");
       if (empresaAuthType) {
         empresaAuthType.addEventListener("change", updateEmpresaAuthBlocks);
+      }
+      const empresaCertFile = document.getElementById("empresaCertFile");
+      if (empresaCertFile) {
+        empresaCertFile.addEventListener("change", () => {
+          const certCurrent = document.getElementById("empresaCertCurrent");
+          const fileName = empresaCertFile.files?.[0]?.name || "";
+          if (certCurrent && fileName) certCurrent.textContent = `Arquivo selecionado: ${fileName}`;
+        });
       }
       if (empresaCnpj) {
         empresaCnpj.addEventListener("input", () => {
@@ -3802,6 +3882,7 @@
       const KEY_EMPRESAS = `nfseEmpresas:${(currentUser.email || "anon").toString().toLowerCase()}`;
       const empresasGrid = document.getElementById("empresasGrid");
       const empresasSearch = document.getElementById("empresasSearch");
+      const empresasCount = document.getElementById("empresasCount");
       let empresasCache = [];
 
       function loadEmpresas() {
@@ -3920,6 +4001,16 @@
         const certCurrent = document.getElementById("empresaCertCurrent");
         if (certCurrent) certCurrent.textContent = "";
         document.getElementById("empresaCertPass").value = "";
+        const loteFile = document.getElementById("empresaLoteFile");
+        if (loteFile) loteFile.value = "";
+        const lotePreview = document.getElementById("empresaLotePreview");
+        if (lotePreview) {
+          lotePreview.classList.add("hidden");
+          lotePreview.innerHTML = "";
+        }
+        const loteSave = document.getElementById("btnCadastrarEmpresasLote");
+        if (loteSave) loteSave.classList.add("hidden");
+        empresasLoteValidadas = [];
         const t = document.getElementById("modalEmpresaTitle");
         if (t) t.textContent = "Cadastrar Empresa";
         const b = document.getElementById("modalEmpresaSave");
@@ -3971,7 +4062,12 @@
 
       function renderEmpresas() {
         const q = (empresasSearch?.value || "").toString().trim().toLowerCase();
-        const list = loadEmpresas().filter((e) => {
+        const allEmpresas = loadEmpresas();
+        if (empresasCount) {
+          const total = allEmpresas.length;
+          empresasCount.textContent = `${total} ${total === 1 ? "empresa" : "empresas"}`;
+        }
+        const list = allEmpresas.filter((e) => {
           const nome = (e.nome || "").toString().toLowerCase();
           const razao = (e.razaoSocial || "").toString().toLowerCase();
           const cnpj = (e.cnpj || "").toString().toLowerCase();
@@ -4113,6 +4209,7 @@
             const emp = loadEmpresas().find((e) => String(e.id) === String(id));
             if (!emp) return;
             fillEmpresaForm(emp);
+            setEmpresaModalTab("manual");
             openModal();
             return;
           }
@@ -4163,7 +4260,6 @@
           }
 
           const selectedFile = certInput?.files?.[0] || null;
-          const looksLikeServerPath = /[\\/]/.test(String(certPfxPath || ""));
           const hasLoginCreds = !!(portalLogin && portalSenha);
 
           if (selectedFile) {
@@ -4190,17 +4286,28 @@
                 throw new Error(j?.error || "Falha ao salvar certificado A1.");
               }
               certPfxPath = j.certPfxPath;
+              if (certInput) {
+                certInput.value = "";
+                certInput.dataset.current = certPfxPath;
+              }
+              const certCurrent = document.getElementById("empresaCertCurrent");
+              if (certCurrent) {
+                const baseName = certPfxPath ? certPfxPath.split(/[\\/]/).pop() : selectedFile.name;
+                certCurrent.textContent = baseName ? `Arquivo atual: ${baseName}` : "";
+              }
             } catch (err) {
               alert(err?.message || "Erro ao salvar certificado A1.");
               return;
             }
           }
 
+          const looksLikeServerPath = /[\\/]/.test(String(certPfxPath || ""));
           const hasCertCreds = !!(certPfxPath && looksLikeServerPath && certPassphrase);
           if (!hasLoginCreds && !hasCertCreds) {
             alert("Preencha Login/Senha ou Certificado A1 + senha do certificado.");
             return;
           }
+          const finalAuthType = hasCertCreds ? "Certificado Digital (A1)" : authType;
 
           const payload = mapEmpresaUiToServer({
             id: empresaRecordId,
@@ -4214,7 +4321,7 @@
             telefone,
             email,
             status,
-            authType,
+            authType: finalAuthType,
             portalLogin,
             portalSenha,
             ativa,
@@ -4246,6 +4353,440 @@
           renderEmpresas();
           updateCapturaLoteButton();
           updateCapturaIndividualButton();
+        });
+      }
+
+      // cadastro em lote de empresas
+      const btnBaixarModeloEmpresas = document.getElementById("btnBaixarModeloEmpresas");
+      const empresaLoteFile = document.getElementById("empresaLoteFile");
+      const btnValidarEmpresasLote = document.getElementById("btnValidarEmpresasLote");
+      const empresaLotePreview = document.getElementById("empresaLotePreview");
+      const btnCadastrarEmpresasLote = document.getElementById("btnCadastrarEmpresasLote");
+      let empresasLoteValidadas = [];
+
+      function escapeHtml(value) {
+        return String(value ?? "")
+          .replace(/&/g, "&amp;")
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;")
+          .replace(/"/g, "&quot;")
+          .replace(/'/g, "&#039;");
+      }
+
+      function csvEscape(value) {
+        const raw = String(value ?? "");
+        if (/[",;\r\n]/.test(raw)) return `"${raw.replace(/"/g, '""')}"`;
+        return raw;
+      }
+
+      function excelCell(value, styleId = "Text", type = "String") {
+        return `<Cell ss:StyleID="${styleId}"><Data ss:Type="${type}">${escapeHtml(value)}</Data></Cell>`;
+      }
+
+      function baixarModeloEmpresas() {
+        const columns = [
+          ["nome", "Nome Fantasia", 170],
+          ["cnpj", "CNPJ", 125],
+          ["razao_social", "Razao Social", 220],
+          ["inscricao_estadual", "Inscricao Estadual", 135],
+          ["uf", "UF", 55],
+          ["cidade", "Cidade", 120],
+          ["endereco", "Endereco", 230],
+          ["telefone", "Telefone", 120],
+          ["email", "E-mail", 210],
+          ["status", "Status", 85],
+          ["tipo_acesso", "Tipo de Acesso", 130],
+          ["login", "Login", 135],
+          ["senha", "Senha", 100],
+          ["senha_certificado", "Senha Certificado", 145],
+        ];
+        const examples = [
+          {
+            nome: "JVR Solucoes Inteligentes",
+            cnpj: "41636197000137",
+            razao_social: "JVR Solucoes Inteligentes LTDA",
+            inscricao_estadual: "",
+            uf: "PR",
+            cidade: "Curitiba",
+            endereco: "Rua Exemplo, 100",
+            telefone: "41999999999",
+            email: "contato@jvrsolucoes.com.br",
+            status: "ativo",
+            tipo_acesso: "login_senha",
+            login: "41636197000137",
+            senha: "123456",
+            senha_certificado: "",
+          },
+          {
+            nome: "Empresa Certificado A1",
+            cnpj: "63356089000143",
+            razao_social: "Empresa Certificado A1 LTDA",
+            inscricao_estadual: "",
+            uf: "PR",
+            cidade: "Curitiba",
+            endereco: "Avenida Exemplo, 200",
+            telefone: "41988888888",
+            email: "certificado@empresa.com.br",
+            status: "ativo",
+            tipo_acesso: "certificado_a1",
+            login: "",
+            senha: "",
+            senha_certificado: "senhaDoCertificado",
+          },
+        ];
+        const columnXml = columns.map(([, , width]) => `<Column ss:Width="${width}"/>`).join("");
+        const headerXml = columns.map(([, label]) => excelCell(label, "Header")).join("");
+        const keyXml = columns.map(([key]) => excelCell(key, "Key")).join("");
+        const exampleXml = examples
+          .map((row) => `<Row ss:Height="24">${columns.map(([key]) => excelCell(row[key] || "", "Text")).join("")}</Row>`)
+          .join("");
+        const emptyXml = Array.from({ length: 18 })
+          .map(() => `<Row ss:Height="22">${columns.map(() => excelCell("", "Text")).join("")}</Row>`)
+          .join("");
+
+        const workbook = `<?xml version="1.0"?>
+<?mso-application progid="Excel.Sheet"?>
+<Workbook xmlns="urn:schemas-microsoft-com:office:spreadsheet"
+ xmlns:o="urn:schemas-microsoft-com:office:office"
+ xmlns:x="urn:schemas-microsoft-com:office:excel"
+ xmlns:ss="urn:schemas-microsoft-com:office:spreadsheet">
+ <Styles>
+  <Style ss:ID="Title"><Font ss:Bold="1" ss:Size="16" ss:Color="#FFFFFF"/><Interior ss:Color="#050816" ss:Pattern="Solid"/><Alignment ss:Vertical="Center"/></Style>
+  <Style ss:ID="Note"><Font ss:Color="#1F2937"/><Interior ss:Color="#EAF2FF" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:WrapText="1"/></Style>
+  <Style ss:ID="Header"><Font ss:Bold="1" ss:Color="#FFFFFF"/><Interior ss:Color="#050816" ss:Pattern="Solid"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#111827"/></Borders><Alignment ss:Vertical="Center" ss:Horizontal="Center"/></Style>
+  <Style ss:ID="Key"><Font ss:Bold="1" ss:Color="#065F46"/><Interior ss:Color="#D1FAE5" ss:Pattern="Solid"/><Alignment ss:Vertical="Center" ss:Horizontal="Center"/></Style>
+  <Style ss:ID="Text"><NumberFormat ss:Format="@"/><Alignment ss:Vertical="Center" ss:WrapText="1"/><Borders><Border ss:Position="Bottom" ss:LineStyle="Continuous" ss:Weight="1" ss:Color="#E5E7EB"/></Borders></Style>
+ </Styles>
+ <Worksheet ss:Name="Empresas">
+  <Table>
+   ${columnXml}
+   <Row ss:Height="30"><Cell ss:StyleID="Title" ss:MergeAcross="${columns.length - 1}"><Data ss:Type="String">Modelo de Importacao de Empresas - Fluxo NF</Data></Cell></Row>
+   <Row ss:Height="42"><Cell ss:StyleID="Note" ss:MergeAcross="${columns.length - 1}"><Data ss:Type="String">Preencha a partir da linha 5. Campos obrigatorios: Nome Fantasia, CNPJ, Tipo de Acesso. Para login_senha informe Login e Senha. Para certificado_a1 informe Senha Certificado e anexe o PFX depois no cadastro da empresa.</Data></Cell></Row>
+   <Row ss:Height="22">${keyXml}</Row>
+   <Row ss:Height="28">${headerXml}</Row>
+   ${exampleXml}
+   ${emptyXml}
+  </Table>
+  <WorksheetOptions xmlns="urn:schemas-microsoft-com:office:excel">
+   <FreezePanes/>
+   <FrozenNoSplit/>
+   <SplitHorizontal>4</SplitHorizontal>
+   <TopRowBottomPane>4</TopRowBottomPane>
+   <ActivePane>2</ActivePane>
+   <ProtectObjects>False</ProtectObjects>
+   <ProtectScenarios>False</ProtectScenarios>
+  </WorksheetOptions>
+ </Worksheet>
+</Workbook>`;
+
+        const blob = new Blob(["\uFEFF" + workbook], { type: "application/vnd.ms-excel;charset=utf-8" });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = "modelo-importacao-empresas-fluxo-nf.xls";
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+      }
+
+      function readTextFile(file) {
+        return new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = () => resolve(String(reader.result || ""));
+          reader.onerror = () => reject(new Error("Falha ao ler a planilha."));
+          reader.readAsText(file, "UTF-8");
+        });
+      }
+
+      function detectCsvDelimiter(text) {
+        const firstLine = String(text || "").split(/\r?\n/).find((line) => line.trim()) || "";
+        const semicolons = (firstLine.match(/;/g) || []).length;
+        const commas = (firstLine.match(/,/g) || []).length;
+        return semicolons >= commas ? ";" : ",";
+      }
+
+      function parseCsv(text) {
+        const delimiter = detectCsvDelimiter(text);
+        const rows = [];
+        let row = [];
+        let cell = "";
+        let quoted = false;
+        const raw = String(text || "").replace(/^\uFEFF/, "");
+
+        for (let i = 0; i < raw.length; i += 1) {
+          const ch = raw[i];
+          const next = raw[i + 1];
+          if (ch === '"') {
+            if (quoted && next === '"') {
+              cell += '"';
+              i += 1;
+            } else {
+              quoted = !quoted;
+            }
+          } else if (ch === delimiter && !quoted) {
+            row.push(cell);
+            cell = "";
+          } else if ((ch === "\n" || ch === "\r") && !quoted) {
+            if (ch === "\r" && next === "\n") i += 1;
+            row.push(cell);
+            if (row.some((v) => String(v).trim())) rows.push(row);
+            row = [];
+            cell = "";
+          } else {
+            cell += ch;
+          }
+        }
+        row.push(cell);
+        if (row.some((v) => String(v).trim())) rows.push(row);
+        return rows;
+      }
+
+      function parseExcelXml(text) {
+        const xml = String(text || "").replace(/^\uFEFF/, "").trim();
+        const doc = new DOMParser().parseFromString(xml, "text/xml");
+        if (doc.querySelector("parsererror")) throw new Error("Nao foi possivel ler o arquivo Excel.");
+        const ns = "urn:schemas-microsoft-com:office:spreadsheet";
+        const rowNodes = Array.from(doc.getElementsByTagNameNS(ns, "Row"));
+        const rows = rowNodes
+          .map((rowNode) => {
+            const cells = [];
+            let colIndex = 0;
+            Array.from(rowNode.getElementsByTagNameNS(ns, "Cell")).forEach((cellNode) => {
+              const indexAttr = cellNode.getAttributeNS(ns, "Index") || cellNode.getAttribute("ss:Index");
+              if (indexAttr) colIndex = Math.max(0, Number(indexAttr) - 1);
+              const dataNode = cellNode.getElementsByTagNameNS(ns, "Data")[0];
+              cells[colIndex] = dataNode ? dataNode.textContent || "" : "";
+              colIndex += 1;
+            });
+            return cells;
+          })
+          .filter((row) => row.some((v) => String(v || "").trim()));
+
+        const headerIndex = rows.findIndex((row) => {
+          const normalized = row.map(normalizeCsvHeader);
+          return normalized.includes("nome") && normalized.includes("cnpj");
+        });
+        if (headerIndex < 0) throw new Error("Nao encontrei a linha de cabecalho no Excel.");
+
+        const dataRows = rows.slice(headerIndex + 1).filter((row) => {
+          const normalized = row.map(normalizeCsvHeader);
+          const isPrettyHeader = normalized.includes("nome_fantasia") && normalized.includes("cnpj");
+          return !isPrettyHeader;
+        });
+        return [rows[headerIndex], ...dataRows];
+      }
+
+      function parseEmpresasImportRows(text) {
+        const raw = String(text || "").replace(/^\uFEFF/, "").trim();
+        if (/^<\?xml/i.test(raw) || /<Workbook[\s>]/i.test(raw)) return parseExcelXml(raw);
+        return parseCsv(raw);
+      }
+
+      function normalizeCsvHeader(value) {
+        return String(value || "")
+          .trim()
+          .toLowerCase()
+          .normalize("NFD")
+          .replace(/[\u0300-\u036f]/g, "")
+          .replace(/[^a-z0-9]+/g, "_")
+          .replace(/^_+|_+$/g, "");
+      }
+
+      function getCsvValue(row, names) {
+        for (const name of names) {
+          const value = row[name];
+          if (value !== undefined && value !== null && String(value).trim() !== "") return String(value).trim();
+        }
+        return "";
+      }
+
+      function mapCsvEmpresa(row) {
+        const tipoRaw = getCsvValue(row, ["tipo_acesso", "tipo", "autenticacao", "auth_type"]);
+        const tipoNorm = normalizeCsvHeader(tipoRaw);
+        const isCert = tipoNorm.includes("cert") || tipoNorm.includes("a1");
+        const statusRaw = getCsvValue(row, ["status", "situacao"]);
+        const status = normalizeCsvHeader(statusRaw).includes("inat") ? "INATIVO" : "ATIVO";
+        const cnpj = getCsvValue(row, ["cnpj", "cpf_cnpj"]).replace(/\D/g, "");
+        const portalLogin = getCsvValue(row, ["login", "usuario", "portal_login", "login_portal"]);
+        const portalSenha = getCsvValue(row, ["senha", "portal_senha", "senha_portal"]);
+        const certPassphrase = getCsvValue(row, ["senha_certificado", "cert_pass", "certificado_senha", "senha_a1"]);
+
+        return {
+          id: `emp_${Date.now()}_${Math.random().toString(16).slice(2)}`,
+          nome: getCsvValue(row, ["nome", "nome_fantasia", "empresa"]),
+          razaoSocial: getCsvValue(row, ["razao_social", "razao", "razao_social_nome"]),
+          cnpj,
+          loginPortal: portalLogin,
+          senhaPortal: portalSenha,
+          authType: isCert ? "Certificado Digital (A1)" : "Login e Senha",
+          certPassphrase,
+          telefone: getCsvValue(row, ["telefone", "celular", "whatsapp"]),
+          email: getCsvValue(row, ["email", "e_mail"]),
+          status,
+          ativa: status === "ATIVO",
+          uf: getCsvValue(row, ["uf", "estado"]),
+          cidade: getCsvValue(row, ["cidade", "municipio"]),
+          municipio: getCsvValue(row, ["cidade", "municipio"]),
+          endereco: getCsvValue(row, ["endereco", "endereco_completo"]),
+          inscricaoEstadual: getCsvValue(row, ["inscricao_estadual", "ie"]),
+          certPfxPath: "",
+        };
+      }
+
+      function validarEmpresasCsv(text) {
+        const rows = parseEmpresasImportRows(text);
+        if (rows.length < 2) throw new Error("A planilha precisa ter cabecalho e pelo menos uma empresa.");
+
+        const headers = rows[0].map(normalizeCsvHeader);
+        const required = ["nome", "cnpj"];
+        const missing = required.filter((name) => !headers.includes(name));
+        if (missing.length) throw new Error(`Colunas obrigatorias ausentes: ${missing.join(", ")}.`);
+
+        const existingCnpjs = new Set(loadEmpresas().map((e) => String(e.cnpj || "").replace(/\D/g, "")).filter(Boolean));
+        const seenCnpjs = new Set();
+
+        return rows.slice(1).map((values, index) => {
+          const row = {};
+          headers.forEach((header, i) => {
+            if (header) row[header] = values[i] || "";
+          });
+          const empresa = mapCsvEmpresa(row);
+          const errors = [];
+          const warnings = [];
+          if (!empresa.nome) errors.push("Nome obrigatorio.");
+          if (empresa.cnpj.length !== 14) errors.push("CNPJ deve ter 14 digitos.");
+          if (empresa.cnpj && existingCnpjs.has(empresa.cnpj)) errors.push("CNPJ ja cadastrado.");
+          if (empresa.cnpj && seenCnpjs.has(empresa.cnpj)) errors.push("CNPJ repetido na planilha.");
+          if (empresa.cnpj) seenCnpjs.add(empresa.cnpj);
+          if (empresa.authType.includes("Certificado")) {
+            if (!empresa.certPassphrase) errors.push("Senha do certificado obrigatoria.");
+            warnings.push("Anexe o arquivo A1 depois no cadastro da empresa.");
+          } else if (!empresa.loginPortal || !empresa.senhaPortal) {
+            errors.push("Login e senha obrigatorios para tipo login_senha.");
+          }
+          return { line: index + 2, empresa, errors, warnings, ok: errors.length === 0 };
+        });
+      }
+
+      function renderEmpresasLotePreview(results) {
+        if (!empresaLotePreview) return;
+        const total = results.length;
+        const ok = results.filter((r) => r.ok).length;
+        const errors = total - ok;
+        const rows = results
+          .map((r) => {
+            const messages = [...r.errors, ...r.warnings].join(" ");
+            return `
+              <tr class="border-t border-slate-200/70 dark:border-white/10">
+                <td class="py-2 pr-3 text-xs">${r.line}</td>
+                <td class="py-2 pr-3 text-xs font-semibold">${escapeHtml(r.empresa.nome || "-")}</td>
+                <td class="py-2 pr-3 text-xs">${escapeHtml(formatCNPJ(r.empresa.cnpj || ""))}</td>
+                <td class="py-2 pr-3 text-xs">${r.ok ? '<span class="text-emerald-600 dark:text-emerald-300">OK</span>' : '<span class="text-rose-600 dark:text-rose-300">Erro</span>'}</td>
+                <td class="py-2 text-xs text-slate-500 dark:text-white/50">${escapeHtml(messages || "-")}</td>
+              </tr>
+            `;
+          })
+          .join("");
+
+        empresaLotePreview.classList.remove("hidden");
+        empresaLotePreview.innerHTML = `
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <div class="rounded-xl2 border border-slate-200/70 bg-white/70 p-3 dark:border-white/10 dark:bg-white/5">
+              <p class="text-xs text-slate-500 dark:text-white/50">Encontradas</p>
+              <p class="mt-1 text-lg font-semibold">${total}</p>
+            </div>
+            <div class="rounded-xl2 border border-emerald-500/25 bg-emerald-500/10 p-3">
+              <p class="text-xs text-emerald-700 dark:text-emerald-200">Prontas</p>
+              <p class="mt-1 text-lg font-semibold">${ok}</p>
+            </div>
+            <div class="rounded-xl2 border border-rose-500/25 bg-rose-500/10 p-3">
+              <p class="text-xs text-rose-700 dark:text-rose-200">Com erro</p>
+              <p class="mt-1 text-lg font-semibold">${errors}</p>
+            </div>
+          </div>
+          <div class="mt-4 max-h-64 overflow-auto">
+            <table class="w-full text-left">
+              <thead>
+                <tr class="text-xs text-slate-500 dark:text-white/50">
+                  <th class="pb-2 pr-3">Linha</th>
+                  <th class="pb-2 pr-3">Empresa</th>
+                  <th class="pb-2 pr-3">CNPJ</th>
+                  <th class="pb-2 pr-3">Status</th>
+                  <th class="pb-2">Detalhe</th>
+                </tr>
+              </thead>
+              <tbody>${rows}</tbody>
+            </table>
+          </div>
+        `;
+        if (btnCadastrarEmpresasLote) btnCadastrarEmpresasLote.classList.toggle("hidden", ok === 0);
+      }
+
+      if (btnBaixarModeloEmpresas) btnBaixarModeloEmpresas.addEventListener("click", baixarModeloEmpresas);
+      if (btnValidarEmpresasLote) {
+        btnValidarEmpresasLote.addEventListener("click", async () => {
+          const file = empresaLoteFile?.files?.[0] || null;
+          if (!file) {
+            alert("Selecione o arquivo CSV de empresas.");
+            return;
+          }
+          try {
+            const text = await readTextFile(file);
+            empresasLoteValidadas = validarEmpresasCsv(text);
+            renderEmpresasLotePreview(empresasLoteValidadas);
+          } catch (err) {
+            empresasLoteValidadas = [];
+            if (btnCadastrarEmpresasLote) btnCadastrarEmpresasLote.classList.add("hidden");
+            if (empresaLotePreview) empresaLotePreview.classList.add("hidden");
+            alert(err?.message || "Erro ao validar arquivo.");
+          }
+        });
+      }
+      if (btnCadastrarEmpresasLote) {
+        btnCadastrarEmpresasLote.addEventListener("click", async () => {
+          const validas = empresasLoteValidadas.filter((r) => r.ok);
+          if (!validas.length) {
+            alert("Valide uma planilha com pelo menos uma empresa correta.");
+            return;
+          }
+          btnCadastrarEmpresasLote.disabled = true;
+          btnCadastrarEmpresasLote.textContent = "Cadastrando...";
+          let saved = 0;
+          let failed = 0;
+          try {
+            for (const item of validas) {
+              const payload = mapEmpresaUiToServer(item.empresa);
+              const resp = await fetch("/api/empresas", {
+                method: "POST",
+                credentials: "include",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              const j = await resp.json().catch(() => ({}));
+              if (!resp.ok || !j?.ok) {
+                failed += 1;
+                item.ok = false;
+                item.errors = [j?.error || "Falha ao cadastrar no servidor."];
+              } else {
+                saved += 1;
+              }
+            }
+            await refreshEmpresasFromServer();
+            renderEmpresas();
+            renderLoteEmpresas();
+            renderCapturaIndividualEmpresas();
+            updateCapturaLoteButton();
+            updateCapturaIndividualButton();
+            renderEmpresasLotePreview(empresasLoteValidadas);
+            alert(`Importacao concluida. Cadastradas: ${saved}. Falhas: ${failed}.`);
+            if (saved > 0 && failed === 0) closeModal();
+          } catch (err) {
+            alert(err?.message || "Erro ao cadastrar empresas em lote.");
+          } finally {
+            btnCadastrarEmpresasLote.disabled = false;
+            btnCadastrarEmpresasLote.textContent = "Cadastrar empresas";
+          }
         });
       }
 
@@ -5532,6 +6073,29 @@
       // view inicial
       showView("view-dashboard");
 
+      function formatDateInputValue(date) {
+        const y = date.getFullYear();
+        const m = String(date.getMonth() + 1).padStart(2, "0");
+        const d = String(date.getDate()).padStart(2, "0");
+        return `${y}-${m}-${d}`;
+      }
+
+      function setCurrentMonthPeriodoDefaults() {
+        const now = new Date();
+        const firstDay = formatDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+        const lastDay = formatDateInputValue(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+        [
+          ["loteDataInicio", firstDay],
+          ["loteDataFim", lastDay],
+          ["ciDataInicio", firstDay],
+          ["ciDataFim", lastDay],
+        ].forEach(([id, value]) => {
+          const el = document.getElementById(id);
+          if (el && !el.value) el.value = value;
+        });
+      }
+
       // init: empresas / lote / ✅ individual / kpis / fila
       (async function init() {
         // carrega cache local imediato para render rápido
@@ -5549,6 +6113,7 @@
         renderEmpresas();
         renderLoteEmpresas();
         renderCapturaIndividualEmpresas();
+        setCurrentMonthPeriodoDefaults();
         updateKPIsFromStorage();
         renderFila();
         renderDownloads();

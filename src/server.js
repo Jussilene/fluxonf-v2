@@ -415,14 +415,22 @@ app.post("/api/nf/manual", async (req, res) => {
     const baixarPdf = !!req.body?.baixarPdf;
 
     const tipos = normalizeTipos(req.body?.processarTipos, req.body?.tipoNota);
+    const bodyCertPath = req.body?.certPfxPath || req.body?.pfxPath || "";
+    const bodyCertPass =
+      req.body?.certPassphrase ||
+      req.body?.certPfxPassphrase ||
+      req.body?.passphrase ||
+      req.body?.certPass ||
+      "";
 
     const isCertReq =
       req.body?.usarCertificadoA1 === true ||
-      String(req.body?.authType || "").toLowerCase().includes("certificado");
+      String(req.body?.authType || "").toLowerCase().includes("certificado") ||
+      !!(bodyCertPath && bodyCertPass);
 
     const resolvedCertPath = isCertReq
       ? resolveCertPathForUser({
-          certPfxPath: req.body?.certPfxPath || req.body?.pfxPath || "",
+          certPfxPath: bodyCertPath,
           empresaId: req.body?.empresaId || "",
           userEmail: req.body?.usuarioEmail || req.userEmail || "",
         })
@@ -432,7 +440,10 @@ app.post("/api/nf/manual", async (req, res) => {
       ...req.body,
       baixarXml,
       baixarPdf,
-      certPfxPath: resolvedCertPath || req.body?.certPfxPath || req.body?.pfxPath || "",
+      usarCertificadoA1: isCertReq,
+      authType: isCertReq ? "Certificado Digital (A1)" : req.body?.authType || "",
+      certPfxPath: resolvedCertPath || bodyCertPath,
+      certPassphrase: bodyCertPass,
       // ✅ garante que histórico/execuções usem o usuário do header ou sessão
       usuarioEmail: req.body?.usuarioEmail || req.userEmail || "",
       onLog: (msg) => console.log(msg),

@@ -932,6 +932,33 @@ function parseISODateInput(v) {
   return new Date(y, m - 1, d);
 }
 
+function formatDateInputValue(date) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
+function setCurrentMonthPeriodoDefaults() {
+  const now = new Date();
+  const firstDay = formatDateInputValue(new Date(now.getFullYear(), now.getMonth(), 1));
+  const lastDay = formatDateInputValue(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+  [
+    ["dataInicial", firstDay],
+    ["dataFinal", lastDay],
+    ["loteDataInicial", firstDay],
+    ["loteDataFinal", lastDay],
+    ["loteDataInicio", firstDay],
+    ["loteDataFim", lastDay],
+    ["ciDataInicio", firstDay],
+    ["ciDataFim", lastDay],
+  ].forEach(([id, value]) => {
+    const el = $(id);
+    if (el && !el.value) el.value = value;
+  });
+}
+
 function maybeSwapPeriodoInUI({ dataInicialId, dataFinalId, logsEl }) {
   const diEl = $(dataInicialId);
   const dfEl = $(dataFinalId);
@@ -1750,6 +1777,7 @@ async function initDashboard() {
 
   // ✅ monta UI Base44 da Captura Individual (se estiver nessa tela)
   ensureCaptureIndividualBase44UI();
+  setCurrentMonthPeriodoDefaults();
 
   // tipos
   wireTodasCheckbox("");
